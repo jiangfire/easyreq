@@ -1,14 +1,20 @@
 import { getCurrentUser } from '@/services/auth.service'
 import { projectService } from '@/services/project.service'
+import { requirementService } from '@/services/requirement.service'
+import { RequirementList } from '@/components/requirement/requirement-list'
+import { QuickSubmit } from '@/components/requirement/quick-submit'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
 export default async function ProjectDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ status?: string; sortBy?: string; page?: string }>
 }) {
   const { slug } = await params
+  const sp = await searchParams
   const user = await getCurrentUser()
   if (!user) return null
 
@@ -18,6 +24,13 @@ export default async function ProjectDetailPage({
   } catch {
     notFound()
   }
+
+  const result = await requirementService.list(project.id, user.id, {
+    status: sp.status && sp.status !== 'all' ? [sp.status] : undefined,
+    sortBy: sp.sortBy ?? 'createdAt',
+    page: sp.page ? parseInt(sp.page, 10) : 1,
+    pageSize: 25,
+  })
 
   return (
     <div>
@@ -31,14 +44,25 @@ export default async function ProjectDetailPage({
         {project.description && <p className="mt-1 text-sm text-gray-500">{project.description}</p>}
       </div>
 
-      <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
-        <p className="text-sm text-gray-400">需求列表即将实现</p>
+      {/* Quick submit */}
+      <div className="mb-6">
+        <QuickSubmit projectSlug={slug} />
       </div>
 
+      {/* Requirements list */}
+      <RequirementList
+        requirements={result.data}
+        pagination={result.pagination}
+        projectSlug={slug}
+        searchParams={{ status: sp.status, sortBy: sp.sortBy }}
+      />
+
       {/* Members */}
-      <div className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">项目成员</h2>
-        <div className="space-y-2">
+      <details className="mt-8">
+        <summary className="cursor-pointer text-sm font-semibold text-gray-700">
+          项目成员 ({project.members.length})
+        </summary>
+        <div className="mt-3 space-y-2">
           {project.members.map((m) => (
             <div key={m.id} className="flex items-center gap-2 text-sm">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-medium text-blue-700">
@@ -51,7 +75,7 @@ export default async function ProjectDetailPage({
             </div>
           ))}
         </div>
-      </div>
+      </details>
     </div>
   )
 }
