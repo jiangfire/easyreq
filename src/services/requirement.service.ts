@@ -70,6 +70,13 @@ export class RequirementService {
             members: { select: { userId: true } },
           },
         },
+        statusLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            operator: { select: { id: true, name: true } },
+          },
+        },
         _count: {
           select: { comments: { where: { isDeleted: false } }, votes: true, attachments: true },
         },
