@@ -77,6 +77,17 @@ export class RequirementService {
             operator: { select: { id: true, name: true } },
           },
         },
+        comments: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: 'asc' },
+          include: {
+            author: { select: { id: true, name: true } },
+          },
+        },
+        votes: {
+          where: { userId: userId },
+          select: { id: true },
+        },
         _count: {
           select: { comments: { where: { isDeleted: false } }, votes: true, attachments: true },
         },

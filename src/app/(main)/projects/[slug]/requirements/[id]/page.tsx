@@ -3,6 +3,8 @@ import { requirementService } from '@/services/requirement.service'
 import { StatusBadge, PriorityBadge } from '@/components/requirement/status-badge'
 import { StatusTimeline } from '@/components/requirement/status-timeline'
 import { StatusActions } from '@/components/requirement/status-actions'
+import { VoteButton } from '@/components/requirement/vote-button'
+import { CommentSection } from '@/components/comment/comment-section'
 import { PRIORITY_CONFIG } from '@/lib/constants'
 import { getAvailableTransitions, type ReqStatus } from '@/lib/transitions'
 import ReactMarkdown from 'react-markdown'
@@ -92,12 +94,21 @@ export default async function RequirementDetailPage({
             </div>
           )}
 
-          {/* Comments placeholder */}
+          {/* Comments */}
           <div className="mt-8 border-t border-gray-200 pt-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-700">
+            <h3 className="mb-4 text-sm font-semibold text-gray-700">
               评论 ({requirement._count.comments})
             </h3>
-            <p className="text-sm text-gray-400">评论功能即将实现</p>
+            <CommentSection
+              requirementId={requirement.id}
+              initialComments={requirement.comments.map((c) => ({
+                id: c.id,
+                body: c.body,
+                createdAt: c.createdAt.toISOString(),
+                author: c.author,
+              }))}
+              currentUserId={user.id}
+            />
           </div>
         </div>
 
@@ -134,9 +145,11 @@ export default async function RequirementDetailPage({
               )}
             </SidebarItem>
             <SidebarItem label="投票">
-              <span className="text-sm font-medium text-gray-700">
-                {requirement._count.votes} 票
-              </span>
+              <VoteButton
+                requirementId={requirement.id}
+                initialVoted={requirement.votes.length > 0}
+                initialCount={requirement._count.votes}
+              />
             </SidebarItem>
 
             {/* Status Timeline */}
