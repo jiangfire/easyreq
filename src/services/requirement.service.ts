@@ -1,6 +1,13 @@
 import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
 import type { CreateRequirementInput } from '@/lib/validation/requirement'
+import {
+  canTransition,
+  isQuickPathTransition,
+  hasTransitionPermission,
+  type ReqStatus,
+  type Role,
+} from '@/lib/transitions'
 
 export class RequirementService {
   /**
@@ -150,6 +157,48 @@ export class RequirementService {
         totalPages: Math.ceil(total / pageSize),
       },
     }
+  }
+  async transition(
+    id: string,
+    operatorId: string,
+    operatorRole: string,
+    toStatus: ReqStatus,
+    note?: string,
+  ) {
+    const requirement = await db.requirement.findUniqueOrThrow({ where: { id } })
+
+    const fromStatus = requirement.status as ReqStatus
+    const isQuickPath = isQuickPathTransition(fromStatus, toStatus)
+
+    if (!canTransition(fromStatus, toStatus)) {
+      throw new AppError(
+        'INVALID_TRANSITION',
+        `无法从 ${fromStatus} 转换到 ${toStatus}`,
+      )
+    }
+
+    if (!hasTransitionPermission(fromStatus, toStatus, operatorRole as Role)) {
+      throw new AppError('FORBIDDEN', '你没有执行此操作权限')
+    }
+
+    const [updated] = await db.$transaction([
+      db.requirement.update({
+        where: { id },
+        data: { status: toStatus },
+      }),
+      db.statusLog.create({
+        data: {
+          requirementId: id,
+          fromStatus,
+          toStatus,
+          operatorId,
+          note: note ?? null,
+          isQuickPath,
+        },
+      }),
+    ])
+
+    return updated
   }
 }
 
