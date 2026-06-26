@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,4 +5,229 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ========== 用户与权限 ==========
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  name          String
+  passwordHash  String
+  role          Role            @default(SUBMITTER)
+  avatar        String?
+  projects      ProjectMember[]
+  requirements  Requirement[]   @relation("Author")
+  assignedReqs  Requirement[]   @relation("Assignee")
+  comments      Comment[]
+  votes         Vote[]
+  notifications Notification[]
+  attachments   Attachment[]
+  statusLogs    StatusLog[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+enum Role {
+  SUBMITTER
+  MANAGER
+  DEVELOPER
+  ADMIN
+}
+
+// ========== 项目空间 ==========
+
+model Project {
+  id                     String             @id @default(cuid())
+  name                   String
+  slug                   String             @unique
+  description            String?
+  lastRequirementNumber  Int                @default(0)
+  members                ProjectMember[]
+  requirements           Requirement[]
+  labels                 Label[]
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  role      ProjectRole @default(MEMBER)
+  createdAt DateTime    @default(now())
+
+  @@unique([userId, projectId])
+}
+
+enum ProjectRole {
+  OWNER
+  MEMBER
+}
+
+// ========== 需求 ==========
+
+model Requirement {
+  id                 String             @id @default(cuid())
+  projectId          String
+  project            Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId           String
+  author             User               @relation("Author", fields: [authorId], references: [id], onDelete: Cascade)
+  number             Int
+  title              String             @db.VarChar(200)
+  body               String?
+  status             RequirementStatus  @default(SUBMITTED)
+  priority           Priority           @default(MEDIUM)
+  assigneeId         String?
+  assignee           User?              @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  expectedDate       DateTime?
+  acceptanceCriteria String?
+  comments           Comment[]
+  votes              Vote[]
+  statusLogs         StatusLog[]
+  labels             RequirementLabel[]
+  attachments        Attachment[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@unique([projectId, number])
+  @@index([status])
+  @@index([assigneeId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+enum RequirementStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  PLANNED
+  IN_DEVELOPMENT
+  IN_TESTING
+  DELIVERED
+  ACCEPTED
+  REJECTED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ========== 互动 ==========
+
+model Comment {
+  id             String      @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String
+  isDeleted      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([requirementId])
+}
+
+model Vote {
+  id             String      @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+
+  @@unique([requirementId, userId])
+}
+
+// ========== 状态流转日志 ==========
+
+model StatusLog {
+  id             String            @id @default(cuid())
+  requirementId  String
+  requirement    Requirement       @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  fromStatus     RequirementStatus
+  toStatus       RequirementStatus
+  operatorId     String
+  operator       User              @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  note           String?
+  isQuickPath    Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+
+  @@index([requirementId])
+}
+
+// ========== 通知 ==========
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+}
+
+enum NotificationType {
+  STATUS_CHANGE
+  COMMENT
+  VOTE_MILESTONE
+  ASSIGNMENT
+  REJECTED
+}
+
+// ========== 标签 ==========
+
+model Label {
+  id           String             @id @default(cuid())
+  name         String
+  color        String
+  projectId    String
+  project      Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirements RequirementLabel[]
+
+  @@unique([projectId, name])
+}
+
+model RequirementLabel {
+  requirementId String
+  requirement   Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  labelId       String
+  label         Label       @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([requirementId, labelId])
+  @@index([labelId])
+}
+
+// ========== 附件 ==========
+
+model Attachment {
+  id              String          @id @default(cuid())
+  requirementId   String
+  requirement     Requirement     @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  uploaderId      String
+  uploader        User            @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  storageKey      String
+  storageProvider StorageProvider
+  createdAt       DateTime        @default(now())
+
+  @@index([requirementId])
+}
+
+enum StorageProvider {
+  LOCAL
+  S3
 }
