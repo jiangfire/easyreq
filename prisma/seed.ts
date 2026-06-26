@@ -213,8 +213,8 @@ async function main() {
         status: r.status,
         priority: r.priority,
         assigneeId: r.assignee?.id ?? null,
-        labels: r.project === portalProject && i < 2
-          ? { create: [{ labelId: i === 0 ? featureLabel.id : enhancementLabel.id }] }
+        labels: r.project === portalProject && i < 3
+          ? { create: [{ labelId: i === 0 ? featureLabel.id : i === 1 ? enhancementLabel.id : bugLabel.id }] }
           : undefined,
       },
     })
