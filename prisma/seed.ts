@@ -120,15 +120,21 @@ async function main() {
 
   console.log(`Created 2 projects: ${portalProject.name}, ${infraProject.name}`)
 
-  // Create labels for portal project
-  const bugLabel = await prisma.label.create({
-    data: { name: 'bug', color: '#d73a4a', projectId: portalProject.id },
+  // Create labels for portal project (idempotent — safe to re-run)
+  const bugLabel = await prisma.label.upsert({
+    where: { projectId_name: { projectId: portalProject.id, name: 'bug' } },
+    update: { color: '#d73a4a' },
+    create: { name: 'bug', color: '#d73a4a', projectId: portalProject.id },
   })
-  const featureLabel = await prisma.label.create({
-    data: { name: 'feature', color: '#a2eeef', projectId: portalProject.id },
+  const featureLabel = await prisma.label.upsert({
+    where: { projectId_name: { projectId: portalProject.id, name: 'feature' } },
+    update: { color: '#a2eeef' },
+    create: { name: 'feature', color: '#a2eeef', projectId: portalProject.id },
   })
-  const enhancementLabel = await prisma.label.create({
-    data: { name: 'enhancement', color: '#84b6eb', projectId: portalProject.id },
+  const enhancementLabel = await prisma.label.upsert({
+    where: { projectId_name: { projectId: portalProject.id, name: 'enhancement' } },
+    update: { color: '#84b6eb' },
+    create: { name: 'enhancement', color: '#84b6eb', projectId: portalProject.id },
   })
 
   console.log(`Created 3 labels for ${portalProject.name}`)

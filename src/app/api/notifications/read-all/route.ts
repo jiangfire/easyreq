@@ -10,7 +10,7 @@ export async function POST() {
   }
 
   try {
-    await notificationService.markAsRead(user.id)
+    await notificationService.markAllRead(user.id)
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof AppError) {

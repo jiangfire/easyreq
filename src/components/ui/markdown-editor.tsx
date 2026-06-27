@@ -130,7 +130,9 @@ export function MarkdownEditor({
 
       const before = value.slice(0, mentionRange.start)
       const after = value.slice(mentionRange.end)
-      const mention = `[@${member.name}](/users/${member.id})`
+      // Plain-text @name mention: there is no user profile route, so a link
+      // would 404. A bolded @name is still visible/clear without being dead.
+      const mention = `**@${member.name}**`
       const newValue = before + mention + ' ' + after
       onChange(newValue)
       closeMention()

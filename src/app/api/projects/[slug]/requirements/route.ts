@@ -4,6 +4,20 @@ import { projectService } from '@/services/project.service'
 import { requirementService } from '@/services/requirement.service'
 import { createRequirementSchema } from '@/lib/validation/requirement'
 import { AppError } from '@/lib/errors'
+import { parsePagination } from '@/lib/api-helpers'
+import type { ReqStatus } from '@/lib/transitions'
+import type { Priority } from '@/generated/prisma/client'
+
+const STATUS_VALUES = new Set<string>([
+  'SUBMITTED', 'UNDER_REVIEW', 'PLANNED', 'IN_DEVELOPMENT', 'IN_TESTING', 'DELIVERED', 'ACCEPTED', 'REJECTED',
+])
+const PRIORITY_VALUES = new Set<string>(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
+
+function filterEnum(values: string[] | undefined, allowed: Set<string>) {
+  if (!values) return undefined
+  const filtered = values.filter((v) => allowed.has(v))
+  return filtered.length > 0 ? filtered : undefined
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,13 +31,12 @@ export async function GET(
   const { slug } = await ctx.params
   const sp = request.nextUrl.searchParams
 
-  const status = sp.get('status')?.split(',').filter(Boolean)
-  const priority = sp.get('priority')?.split(',').filter(Boolean)
+  const status = filterEnum(sp.get('status')?.split(',').filter(Boolean), STATUS_VALUES) as ReqStatus[] | undefined
+  const priority = filterEnum(sp.get('priority')?.split(',').filter(Boolean), PRIORITY_VALUES) as Priority[] | undefined
   const assigneeId = sp.get('assigneeId') ?? undefined
   const labelIds = sp.get('labelIds')?.split(',').filter(Boolean)
   const sortBy = sp.get('sortBy') ?? undefined
-  const page = Number(sp.get('page') ?? '1')
-  const pageSize = Number(sp.get('pageSize') ?? '25')
+  const { page, pageSize } = parsePagination(sp)
 
   try {
     const project = await projectService.getBySlug(slug, user.id)

@@ -7,8 +7,7 @@ import { StatusTimeline } from '@/components/requirement/status-timeline'
 import { StatusActions } from '@/components/requirement/status-actions'
 import { VoteButton } from '@/components/requirement/vote-button'
 import { CommentSection } from '@/components/comment/comment-section'
-import { EditableTitle, EditableBody } from '@/components/requirement/editable-fields'
-import { PRIORITY_CONFIG } from '@/lib/constants'
+import { EditableTitle, EditableBody, EditablePriority, EditableExpectedDate, EditableAcceptanceCriteria } from '@/components/requirement/editable-fields'
 import { getAvailableTransitions, type ReqStatus } from '@/lib/transitions'
 import Image from 'next/image'
 import { LabelSelector } from '@/components/requirement/label-selector'
@@ -140,12 +139,14 @@ export default async function RequirementDetailPage({
           )}
 
           {/* Acceptance Criteria */}
-          {requirement.acceptanceCriteria && (
-            <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">验收标准</h3>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{requirement.acceptanceCriteria}</p>
-            </div>
-          )}
+          <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-gray-700">验收标准</h3>
+            <EditableAcceptanceCriteria
+              requirementId={requirement.id}
+              initialAcceptanceCriteria={requirement.acceptanceCriteria}
+              canEdit={isManager}
+            />
+          </div>
 
           {/* Comments */}
           <div className="mt-8 border-t border-gray-200 pt-4">
@@ -172,9 +173,11 @@ export default async function RequirementDetailPage({
               <StatusBadge status={requirement.status} />
             </SidebarItem>
             <SidebarItem label="优先级">
-              <span className={`text-sm font-medium ${PRIORITY_CONFIG[requirement.priority]?.color}`}>
-                {PRIORITY_CONFIG[requirement.priority]?.label}
-              </span>
+              <EditablePriority
+                requirementId={requirement.id}
+                initialPriority={requirement.priority}
+                canEdit={isManager}
+              />
             </SidebarItem>
             <SidebarItem label="指派给">
               <AssigneeSelector
@@ -193,13 +196,11 @@ export default async function RequirementDetailPage({
               />
             </SidebarItem>
             <SidebarItem label="期望日期">
-              {requirement.expectedDate ? (
-                <span className="text-sm text-gray-600">
-                  {new Date(requirement.expectedDate).toLocaleDateString('zh-CN')}
-                </span>
-              ) : (
-                <span className="text-sm text-gray-400">未设置</span>
-              )}
+              <EditableExpectedDate
+                requirementId={requirement.id}
+                initialExpectedDate={requirement.expectedDate?.toISOString() ?? null}
+                canEdit={isManager}
+              />
             </SidebarItem>
             <SidebarItem label="投票">
               <VoteButton

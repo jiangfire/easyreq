@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/services/auth.service'
 import { commentService } from '@/services/comment.service'
 import { createCommentSchema } from '@/lib/validation/comment'
 import { AppError } from '@/lib/errors'
+import { parsePagination } from '@/lib/api-helpers'
 
 export async function GET(
   request: NextRequest,
@@ -14,8 +15,7 @@ export async function GET(
   }
 
   const { id } = await ctx.params
-  const page = Number(request.nextUrl.searchParams.get('page') ?? '1')
-  const pageSize = Number(request.nextUrl.searchParams.get('pageSize') ?? '25')
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams)
 
   try {
     const result = await commentService.list(id, user.id, { page, pageSize })

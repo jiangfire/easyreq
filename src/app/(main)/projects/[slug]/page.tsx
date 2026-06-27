@@ -6,6 +6,19 @@ import { RequirementList } from '@/components/requirement/requirement-list'
 import { QuickSubmit } from '@/components/requirement/quick-submit'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import type { ReqStatus } from '@/lib/transitions'
+import type { Priority } from '@/generated/prisma/client'
+
+const STATUS_VALUES = new Set<string>([
+  'SUBMITTED', 'UNDER_REVIEW', 'PLANNED', 'IN_DEVELOPMENT', 'IN_TESTING', 'DELIVERED', 'ACCEPTED', 'REJECTED',
+])
+const PRIORITY_VALUES = new Set<string>(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
+
+function filterEnum(values: string[] | undefined, allowed: Set<string>) {
+  if (!values) return undefined
+  const filtered = values.filter((v) => allowed.has(v))
+  return filtered.length > 0 ? filtered : undefined
+}
 
 export default async function ProjectDetailPage({
   params,
@@ -34,11 +47,19 @@ export default async function ProjectDetailPage({
   }
 
   const labelIds = sp.labelIds ? sp.labelIds.split(',').filter(Boolean) : undefined
+  const status = filterEnum(
+    sp.status && sp.status !== 'all' ? [sp.status] : undefined,
+    STATUS_VALUES,
+  ) as ReqStatus[] | undefined
+  const priority = filterEnum(
+    sp.priority ? sp.priority.split(',').filter(Boolean) : undefined,
+    PRIORITY_VALUES,
+  ) as Priority[] | undefined
 
   const [result, labels, members] = await Promise.all([
     requirementService.list(project.id, user.id, {
-      status: sp.status && sp.status !== 'all' ? [sp.status] : undefined,
-      priority: sp.priority ? sp.priority.split(',').filter(Boolean) : undefined,
+      status,
+      priority,
       assigneeId: sp.assigneeId || undefined,
       labelIds,
       sortBy: sp.sortBy ?? 'createdAt',

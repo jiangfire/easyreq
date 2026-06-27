@@ -1,32 +1,44 @@
-import { signIn } from '@/lib/auth'
+import { signIn, RateLimitedError } from '@/lib/auth'
 import { AuthError } from 'next-auth'
 import { redirect } from 'next/navigation'
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string }>
+  searchParams: Promise<{ callbackUrl?: string; error?: string; retry?: string }>
 }) {
-  const { callbackUrl } = await searchParams
+  const { callbackUrl, error, retry } = await searchParams
 
   async function loginAction(formData: FormData) {
     'use server'
+    const email = formData.get('email') as string
     try {
       await signIn('credentials', {
-        email: formData.get('email') as string,
+        email,
         password: formData.get('password') as string,
         redirectTo: callbackUrl ?? '/projects',
       })
-    } catch (error) {
-      if (error instanceof AuthError) {
-        const url = new URL('/login', process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
-        if (callbackUrl) url.searchParams.set('callbackUrl', callbackUrl)
-        url.searchParams.set('error', 'invalid_credentials')
-        redirect(url.toString())
+    } catch (err) {
+      const base = new URL('/login', process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
+      if (callbackUrl) base.searchParams.set('callbackUrl', callbackUrl)
+      if (err instanceof RateLimitedError) {
+        base.searchParams.set('error', 'rate_limited')
+        base.searchParams.set('retry', String(err.retryAfter))
+        redirect(base.toString())
       }
-      throw error
+      if (err instanceof AuthError) {
+        base.searchParams.set('error', 'invalid_credentials')
+        redirect(base.toString())
+      }
+      throw err
     }
   }
+
+  const errorMessages: Record<string, string> = {
+    invalid_credentials: '邮箱或密码不正确',
+    rate_limited: '尝试次数过多，请稍后再试',
+  }
+  const errorMessage = error ? errorMessages[error] ?? '登录失败，请重试' : null
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
@@ -38,6 +50,12 @@ export default async function LoginPage({
 
         <form action={loginAction} className="space-y-4 rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
           {callbackUrl && <input type="hidden" name="callbackUrl" value={callbackUrl} />}
+          {errorMessage && (
+            <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600" role="alert">
+              {errorMessage}
+              {error === 'rate_limited' && retry ? `（约 ${retry} 秒）` : null}
+            </div>
+          )}
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
               邮箱

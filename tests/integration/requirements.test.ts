@@ -7,6 +7,16 @@ import { commentService } from '@/services/comment.service'
 import { voteService } from '@/services/vote.service'
 import { AppError } from '@/lib/errors'
 
+// SAFETY GUARD: refuse to run against any database whose name is not clearly
+// a test database. This prevents cleanDatabase() from ever wiping dev/prod.
+const testDsn = process.env.DATABASE_URL ?? ''
+if (!/_test([-?]|$)/.test(testDsn)) {
+  throw new Error(
+    `Refusing to run integration tests: DATABASE_URL must target a test database (got "${testDsn}"). ` +
+      'Run tests via `npm test`, which isolates the database automatically.',
+  )
+}
+
 let adminId: string
 let managerId: string
 let developerId: string
@@ -273,6 +283,85 @@ describe('Requirement Service Integration', () => {
     await expect(
       projectService.removeMember(projectId, managerId, managerId),
     ).rejects.toBeInstanceOf(AppError)
+  })
+
+  it('rejects a global MANAGER (non-OWNER) managing project members', async () => {
+    // manager is a global MANAGER and a project MEMBER (not OWNER) of a new
+    // project. Spec §members: only project OWNER or global ADMIN may manage.
+    const infra = await projectService.create(
+      { name: 'Infra Guard', slug: 'infra-guard', description: '' },
+      adminId,
+    )
+    await db.projectMember.create({
+      data: { userId: managerId, projectId: infra.id, role: 'MEMBER' },
+    })
+    const target = await db.user.create({
+      data: {
+        email: `target-${Date.now()}@test.dev`,
+        name: 'Target',
+        passwordHash: 'x',
+        role: 'SUBMITTER',
+      },
+    })
+
+    await expect(
+      projectService.addMember(infra.id, target.id, managerId),
+    ).rejects.toBeInstanceOf(AppError)
+    await db.projectMember.create({ data: { userId: target.id, projectId: infra.id } })
+    await expect(
+      projectService.removeMember(infra.id, target.id, managerId),
+    ).rejects.toBeInstanceOf(AppError)
+  })
+
+  it('rejects attaching labels from another project (cross-project guard)', async () => {
+    const req = await requirementService.create(projectId, submitterId, {
+      title: 'Cross label guard',
+    })
+    const other = await projectService.create(
+      { name: 'Other', slug: `other-${Date.now()}`, description: '' },
+      adminId,
+    )
+    const foreignLabel = await db.label.create({
+      data: { name: 'foreign', color: '#000000', projectId: other.id },
+    })
+
+    await expect(
+      requirementService.update(req.id, managerId, 'MANAGER', {
+        labelIds: [foreignLabel.id],
+      }),
+    ).rejects.toBeInstanceOf(AppError)
+  })
+
+  it('vote toggle is wrapped in a transaction and never leaks raw Prisma errors', async () => {
+    const req = await requirementService.create(projectId, submitterId, { title: 'Toggle tx' })
+
+    // Sequential double-toggle is deterministic: vote then unvote returns to count 0.
+    const on = await voteService.toggle(req.id, managerId)
+    expect(on.voted).toBe(true)
+    expect(on.count).toBe(1)
+
+    const off = await voteService.toggle(req.id, managerId)
+    expect(off.voted).toBe(false)
+    expect(off.count).toBe(0)
+
+    // Concurrent double-toggle by the same user must not crash the API with a
+    // raw Prisma P2002. Outcome is race-dependent (1 or 2 winners), but the
+    // service must resolve cleanly — either fulfilled or AppError(CONFLICT),
+    // never a thrown PrismaClientKnownRequestError bubbling to the caller.
+    const results = await Promise.allSettled([
+      voteService.toggle(req.id, developerId),
+      voteService.toggle(req.id, developerId),
+    ])
+
+    const rawPrismaErrors = results.filter(
+      (r) => r.status === 'rejected' && !(r.reason instanceof AppError),
+    )
+    expect(rawPrismaErrors.length).toBe(0)
+    // At most one vote by developer can exist (unique constraint).
+    const devVotes = await db.vote.findMany({
+      where: { requirementId: req.id, userId: developerId },
+    })
+    expect(devVotes.length).toBeLessThanOrEqual(1)
   })
 
   it('sends REJECTED notification to author on rejection', async () => {

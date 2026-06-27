@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
+import { Prisma } from '@/generated/prisma/client'
 import { VOTE_MILESTONES } from '@/lib/constants'
 import {
   notificationService,
@@ -31,30 +32,56 @@ export class VoteService {
       throw new AppError('FORBIDDEN', '你不是该项目成员')
     }
 
-    const existing = await db.vote.findUnique({
-      where: {
-        requirementId_userId: { requirementId, userId },
-      },
+    // Run the entire read-toggle-count-milestone inside one transaction so
+    // concurrent toggles can't produce P2002/P2025 errors or miscount at
+    // the milestone threshold.
+    const result = await db.$transaction(async (tx) => {
+      const existing = await tx.vote.findUnique({
+        where: {
+          requirementId_userId: { requirementId, userId },
+        },
+      })
+
+      const prevCount = await tx.vote.count({ where: { requirementId } })
+
+      let voted: boolean
+      try {
+        if (existing) {
+          await tx.vote.delete({ where: { id: existing.id } })
+          voted = false
+        } else {
+          await tx.vote.create({ data: { requirementId, userId } })
+          voted = true
+        }
+      } catch (error) {
+        // Race between two concurrent toggles: translate Prisma unique/
+        // not-found errors into a clean conflict so callers see 409 not 500.
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === 'P2002' || error.code === 'P2025') {
+            throw new AppError('CONFLICT', '投票状态刚被更新，请重试')
+          }
+        }
+        throw error
+      }
+
+      const count = await tx.vote.count({ where: { requirementId } })
+      const milestone = !existing
+        ? this.getCrossedMilestone(prevCount, count)
+        : null
+
+      return { voted, count, milestone }
     })
 
-    const prevCount = await db.vote.count({ where: { requirementId } })
-
-    if (existing) {
-      await db.vote.delete({ where: { id: existing.id } })
-    } else {
-      await db.vote.create({ data: { requirementId, userId } })
+    if (result.milestone) {
+      await this.notifyMilestone(
+        requirementId,
+        requirement,
+        result.milestone,
+        result.count,
+      )
     }
 
-    const count = await db.vote.count({ where: { requirementId } })
-    const milestone = existing
-      ? null
-      : this.getCrossedMilestone(prevCount, count)
-
-    if (milestone) {
-      await this.notifyMilestone(requirementId, requirement, milestone, count)
-    }
-
-    return { voted: !existing, count, milestone }
+    return result
   }
 
   /**

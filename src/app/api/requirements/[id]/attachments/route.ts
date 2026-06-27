@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/services/auth.service'
 import { attachmentService } from '@/services/attachment.service'
 import { AppError } from '@/lib/errors'
 
+const MAX_FILE_SIZE = Number(process.env.STORAGE_MAX_FILE_SIZE) || 10 * 1024 * 1024
+
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -43,6 +45,13 @@ export async function POST(
     if (!(file instanceof File)) {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: '缺少文件' } },
+        { status: 422 },
+      )
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: '文件大小超过 10MB 限制' } },
         { status: 422 },
       )
     }

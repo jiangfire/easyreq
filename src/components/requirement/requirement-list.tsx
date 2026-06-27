@@ -68,6 +68,7 @@ export function RequirementList({
             labels={labels}
             sp={searchParams}
           />
+          <PriorityFilter current={searchParams.priority} projectSlug={projectSlug} sp={searchParams} />
         </div>
       </div>
 
@@ -75,7 +76,7 @@ export function RequirementList({
       {requirements.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
           <p className="text-sm text-gray-400">
-            {searchParams.status || searchParams.assigneeId || searchParams.labelIds
+            {searchParams.status || searchParams.assigneeId || searchParams.labelIds || searchParams.priority
               ? '当前筛选条件下暂无需求'
               : '暂无需求，在上方输入框提交第一个吧'}
           </p>
@@ -290,6 +291,56 @@ function AssigneeFilter({
           {m.name}
         </Link>
       ))}
+    </div>
+  )
+}
+
+const PRIORITY_OPTIONS = [
+  { value: 'CRITICAL', label: '紧急' },
+  { value: 'HIGH', label: '高' },
+  { value: 'MEDIUM', label: '中' },
+  { value: 'LOW', label: '低' },
+]
+
+function PriorityFilter({
+  current,
+  projectSlug,
+  sp,
+}: {
+  current?: string
+  projectSlug: string
+  sp: SearchParams
+}) {
+  const currentIds = current ? current.split(',') : []
+  function toggle(value: string) {
+    const next = currentIds.includes(value)
+      ? currentIds.filter((v) => v !== value)
+      : [...currentIds, value]
+    return buildHref(projectSlug, sp, {
+      priority: next.length > 0 ? next.join(',') : undefined,
+    })
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-gray-400">优先级:</span>
+      <Link
+        href={buildHref(projectSlug, sp, { priority: undefined })}
+        className={`rounded-md px-2 py-1 text-xs font-medium ${!current ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+      >
+        全部
+      </Link>
+      {PRIORITY_OPTIONS.map((o) => {
+        const active = currentIds.includes(o.value)
+        return (
+          <Link
+            key={o.value}
+            href={toggle(o.value)}
+            className={`rounded-md px-2 py-1 text-xs font-medium ${active ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+          >
+            {o.label}
+          </Link>
+        )
+      })}
     </div>
   )
 }

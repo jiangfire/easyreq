@@ -9,10 +9,42 @@ export class LabelService {
     })
   }
 
-  async create(projectId: string, name: string, color: string) {
+  /**
+   * Verify the caller is a member of the label's project and (for mutations)
+   * that they hold MANAGER/OWNER/ADMIN. Spec §labels: creating/labels is
+   * restricted to MANAGER/OWNER. Defense-in-depth: routes also check, but the
+   * service must not trust the caller.
+   */
+  private async assertCanManage(projectId: string, userId: string, userRole: string) {
+    const membership = await db.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    })
+    if (!membership) {
+      throw new AppError('FORBIDDEN', '你不是该项目成员')
+    }
+    const isManager = userRole === 'MANAGER' || userRole === 'ADMIN' || membership.role === 'OWNER'
+    if (!isManager) {
+      throw new AppError('FORBIDDEN', '只有管理者可管理标签')
+    }
+  }
+
+  async create(
+    projectId: string,
+    name: string,
+    color: string,
+    userId: string,
+    userRole: string,
+  ) {
+    await this.assertCanManage(projectId, userId, userRole)
+
     const normalized = name.trim().toLowerCase()
     if (!normalized) {
       throw new AppError('VALIDATION_ERROR', '标签名称不能为空')
+    }
+
+    const hex = color.startsWith('#') ? color : `#${color}`
+    if (!/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(hex)) {
+      throw new AppError('VALIDATION_ERROR', '标签颜色必须是合法的 hex 值')
     }
 
     const existing = await db.label.findUnique({
@@ -23,33 +55,38 @@ export class LabelService {
     }
 
     return db.label.create({
-      data: {
-        projectId,
-        name: normalized,
-        color: color.startsWith('#') ? color : `#${color}`,
-      },
+      data: { projectId, name: normalized, color: hex },
     })
   }
 
-  async update(labelId: string, projectId: string, name: string, color: string) {
+  async update(
+    labelId: string,
+    projectId: string,
+    name: string,
+    color: string,
+    userId: string,
+    userRole: string,
+  ) {
+    await this.assertCanManage(projectId, userId, userRole)
+
     const normalized = name.trim().toLowerCase()
     if (!normalized) {
       throw new AppError('VALIDATION_ERROR', '标签名称不能为空')
     }
+    const hex = color.startsWith('#') ? color : `#${color}`
+    if (!/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(hex)) {
+      throw new AppError('VALIDATION_ERROR', '标签颜色必须是合法的 hex 值')
+    }
 
     return db.label.update({
       where: { id: labelId, projectId },
-      data: {
-        name: normalized,
-        color: color.startsWith('#') ? color : `#${color}`,
-      },
+      data: { name: normalized, color: hex },
     })
   }
 
-  async delete(labelId: string, projectId: string) {
-    return db.label.delete({
-      where: { id: labelId, projectId },
-    })
+  async delete(labelId: string, projectId: string, userId: string, userRole: string) {
+    await this.assertCanManage(projectId, userId, userRole)
+    return db.label.delete({ where: { id: labelId, projectId } })
   }
 
   async deleteStandalone(labelId: string, userId: string, userRole: string) {

@@ -70,15 +70,15 @@ export class ProjectService {
       where: { userId_projectId: { userId: requesterId, projectId } },
     })
 
-    // OWNER, MANAGER (project-level is not tracked; use global MANAGER), or ADMIN can manage members
+    // Spec §members: only project OWNER or global ADMIN can manage members.
+    // (Global MANAGER is intentionally NOT allowed here.)
     const requester = await db.user.findUnique({
       where: { id: requesterId },
       select: { role: true },
     })
-    const canManage =
-      membership?.role === 'OWNER' || requester?.role === 'MANAGER' || requester?.role === 'ADMIN'
+    const canManage = membership?.role === 'OWNER' || requester?.role === 'ADMIN'
     if (!canManage) {
-      throw new AppError('FORBIDDEN', '只有 OWNER/MANAGER/ADMIN 可以添加成员')
+      throw new AppError('FORBIDDEN', '只有 OWNER/ADMIN 可以添加成员')
     }
 
     const targetUser = await db.user.findUnique({ where: { id: userId } })
@@ -106,14 +106,14 @@ export class ProjectService {
       where: { userId_projectId: { userId: requesterId, projectId } },
     })
 
+    // Spec §members: only project OWNER or global ADMIN can manage members.
     const requester = await db.user.findUnique({
       where: { id: requesterId },
       select: { role: true },
     })
-    const canManage =
-      membership?.role === 'OWNER' || requester?.role === 'MANAGER' || requester?.role === 'ADMIN'
+    const canManage = membership?.role === 'OWNER' || requester?.role === 'ADMIN'
     if (!canManage) {
-      throw new AppError('FORBIDDEN', '只有 OWNER/MANAGER/ADMIN 可以移除成员')
+      throw new AppError('FORBIDDEN', '只有 OWNER/ADMIN 可以移除成员')
     }
 
     const target = await db.projectMember.findUnique({
@@ -126,6 +126,14 @@ export class ProjectService {
     if (target.role === 'OWNER') {
       throw new AppError('FORBIDDEN', '不能移除项目 OWNER')
     }
+
+    // Clear the member from any requirements they were assigned to in this
+    // project, otherwise the requirement shows an assignee who is no longer a
+    // member (Requirement.assignee points at User, not ProjectMember).
+    await db.requirement.updateMany({
+      where: { projectId, assigneeId: userId },
+      data: { assigneeId: null },
+    })
 
     return db.projectMember.delete({
       where: { userId_projectId: { userId, projectId } },

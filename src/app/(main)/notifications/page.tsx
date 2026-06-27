@@ -7,7 +7,7 @@ export default async function NotificationsPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
-  const notifications = await notificationService.listAll(user.id)
+  const result = await notificationService.list(user.id, { pageSize: 50 })
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -23,13 +23,13 @@ export default async function NotificationsPage() {
         </form>
       </div>
 
-      {notifications.length === 0 ? (
+      {result.data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
           <p className="text-sm text-gray-400">暂无通知</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {notifications.map((n) => (
+          {result.data.map((n) => (
             <NotificationCard key={n.id} notification={n} />
           ))}
         </div>
@@ -81,5 +81,5 @@ async function markAllReadAction() {
   'use server'
   const user = await getCurrentUser()
   if (!user) return
-  await notificationService.markAsRead(user.id)
+  await notificationService.markAllRead(user.id)
 }

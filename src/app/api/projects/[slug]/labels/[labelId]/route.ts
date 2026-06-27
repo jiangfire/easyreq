@@ -14,11 +14,18 @@ export async function PATCH(
   }
 
   const { slug, labelId } = await ctx.params
-  const body = await request.json()
 
   try {
     const project = await projectService.getBySlug(slug, user.id)
-    const label = await labelService.update(labelId, project.id, body.name, body.color)
+    const body = await request.json()
+    const label = await labelService.update(
+      labelId,
+      project.id,
+      body?.name,
+      body?.color,
+      user.id,
+      user.role,
+    )
     return NextResponse.json(label)
   } catch (error) {
     if (error instanceof AppError) {
@@ -41,7 +48,7 @@ export async function DELETE(
 
   try {
     const project = await projectService.getBySlug(slug, user.id)
-    await labelService.delete(labelId, project.id)
+    await labelService.delete(labelId, project.id, user.id, user.role)
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof AppError) {

@@ -174,8 +174,8 @@ export class RequirementService {
     projectId: string,
     userId: string,
     options: {
-      status?: string[]
-      priority?: string[]
+      status?: ReqStatus[]
+      priority?: Priority[]
       assigneeId?: string
       labelIds?: string[]
       page?: number
@@ -204,8 +204,8 @@ export class RequirementService {
 
     const where = {
       projectId,
-      ...(options.status ? { status: { in: options.status as ReqStatus[] } } : {}),
-      ...(options.priority ? { priority: { in: options.priority as Priority[] } } : {}),
+      ...(options.status ? { status: { in: options.status } } : {}),
+      ...(options.priority ? { priority: { in: options.priority } } : {}),
       ...(options.assigneeId ? { assigneeId: options.assigneeId } : {}),
       ...(options.labelIds && options.labelIds.length > 0
         ? { labels: { some: { labelId: { in: options.labelIds } } } }
@@ -312,6 +312,23 @@ export class RequirementService {
       }
     }
 
+    // Validate that all labelIds belong to the requirement's project. Without
+    // this, a manager could attach labels from project A to a requirement in
+    // project B (cross-project data leak via the RequirementLabel table,
+    // which has no cross-project constraint).
+    if (data.labelIds && data.labelIds.length > 0) {
+      const ownedLabels = await db.label.findMany({
+        where: {
+          id: { in: data.labelIds },
+          projectId: requirement.project.id,
+        },
+        select: { id: true },
+      })
+      if (ownedLabels.length !== data.labelIds.length) {
+        throw new AppError('VALIDATION_ERROR', '包含不属于本项目的标签')
+      }
+    }
+
     const updateData: Record<string, unknown> = {}
     if (data.title !== undefined) updateData.title = data.title
     if (data.body !== undefined) updateData.body = data.body
@@ -395,12 +412,21 @@ export class RequirementService {
       throw new AppError('FORBIDDEN', '你没有执行此操作权限')
     }
 
-    const [updated] = await db.$transaction([
-      db.requirement.update({
-        where: { id },
+    // Optimistic lock: only apply the transition if the status is still the
+    // one we validated against. Two concurrent transitions on the same
+    // requirement can no longer both succeed and produce conflicting logs.
+    await db.$transaction(async (tx) => {
+      const result = await tx.requirement.updateMany({
+        where: { id, status: requirement.status },
         data: { status: toStatus },
-      }),
-      db.statusLog.create({
+      })
+      if (result.count === 0) {
+        throw new AppError(
+          'CONFLICT',
+          '需求状态已被其他人更新，请刷新后重试',
+        )
+      }
+      await tx.statusLog.create({
         data: {
           requirementId: id,
           fromStatus,
@@ -409,8 +435,11 @@ export class RequirementService {
           note: note ?? null,
           isQuickPath,
         },
-      }),
-    ])
+      })
+    })
+
+    // Re-fetch the updated requirement (avoid returning stale data)
+    const updated = await db.requirement.findUniqueOrThrow({ where: { id } })
 
     // Spec: rejected transition sends REJECTED notification to author
     if (toStatus === 'REJECTED') {

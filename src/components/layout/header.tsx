@@ -30,9 +30,11 @@ export async function Header({ user }: { user: HeaderUser }) {
       </div>
 
       <div className="flex items-center gap-3">
-        <Link href="/admin" className="hidden text-sm text-gray-600 hover:text-gray-900 sm:block">
-          后台
-        </Link>
+        {(user.role === 'ADMIN' || user.role === 'MANAGER') && (
+          <Link href="/admin" className="hidden text-sm text-gray-600 hover:text-gray-900 sm:block">
+            后台
+          </Link>
+        )}
         <NotificationBell initialCount={unreadCount} />
 
         {/* User info */}

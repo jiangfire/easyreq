@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { AppError } from '@/lib/errors'
 import type { Role } from '@/lib/transitions'
 
 export type CurrentUser = {
@@ -37,7 +38,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 export async function requireUser() {
   const user = await getCurrentUser()
   if (!user) {
-    throw new Error('UNAUTHORIZED')
+    throw new AppError('UNAUTHORIZED', '未登录')
   }
   return user
 }
@@ -45,7 +46,7 @@ export async function requireUser() {
 export async function requireRole(...roles: string[]) {
   const user = await requireUser()
   if (!roles.includes(user.role)) {
-    throw new Error('FORBIDDEN')
+    throw new AppError('FORBIDDEN', '无权限')
   }
   return user
 }

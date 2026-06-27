@@ -37,11 +37,17 @@ export async function POST(
   }
 
   const { slug } = await ctx.params
-  const body = await request.json()
 
   try {
     const project = await projectService.getBySlug(slug, user.id)
-    const label = await labelService.create(project.id, body.name, body.color)
+    const body = await request.json()
+    const label = await labelService.create(
+      project.id,
+      body?.name,
+      body?.color,
+      user.id,
+      user.role,
+    )
     return NextResponse.json(label, { status: 201 })
   } catch (error) {
     if (error instanceof AppError) {

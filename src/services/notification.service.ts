@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import { VOTE_MILESTONES } from '@/lib/constants'
 import { notificationChannel } from '@/lib/notifications/channel'
 import type { NotificationType } from '@/generated/prisma/client'
 import type { ReqStatus } from '@/lib/transitions'
@@ -45,30 +44,41 @@ export class NotificationService {
     return created
   }
 
-  async listUnread(userId: string, limit = 50) {
-    return db.notification.findMany({
-      where: { userId, isRead: false },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    })
-  }
-
-  async listAll(userId: string, limit = 100) {
-    return db.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    })
-  }
-
-  async markAsRead(userId: string, notificationId?: string) {
-    if (notificationId) {
-      return db.notification.updateMany({
-        where: { id: notificationId, userId },
-        data: { isRead: true, readAt: new Date() },
-      })
+  async list(
+    userId: string,
+    options: { unreadOnly?: boolean; page?: number; pageSize?: number } = {},
+  ) {
+    const page = options.page ?? 1
+    const pageSize = options.pageSize ?? 25
+    const where = { userId, ...(options.unreadOnly ? { isRead: false } : {}) }
+    const [items, total] = await Promise.all([
+      db.notification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.notification.count({ where }),
+    ])
+    return {
+      data: items,
+      pagination: {
+        page,
+        pageSize,
+        totalItems: total,
+        totalPages: Math.ceil(total / pageSize),
+      },
     }
+  }
 
+  async markOneRead(userId: string, notificationId: string) {
+    return db.notification.updateMany({
+      where: { id: notificationId, userId },
+      data: { isRead: true, readAt: new Date() },
+    })
+  }
+
+  async markAllRead(userId: string) {
     return db.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
@@ -84,13 +94,6 @@ export class NotificationService {
 
 export function requirementLink(projectSlug: string, requirementNumber: number) {
   return `/projects/${projectSlug}/requirements/${requirementNumber}`
-}
-
-export function nextVoteMilestone(count: number): number | null {
-  for (const milestone of VOTE_MILESTONES) {
-    if (count <= milestone) return milestone
-  }
-  return null
 }
 
 export function statusLabel(status: ReqStatus): string {

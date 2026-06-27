@@ -3,14 +3,15 @@ import { AppError } from '@/lib/errors'
 import { createStorageProvider } from '@/lib/storage'
 import type { StorageProvider } from '@/lib/storage/types'
 
-const ALLOWED_MIME_TYPES = [
-  'image/',
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
   'application/pdf',
   'text/plain',
-  'text/markdown',
   'application/zip',
-  'application/x-zip-compressed',
-]
+])
 
 const MAX_FILE_SIZE = Number(process.env.STORAGE_MAX_FILE_SIZE) || 10 * 1024 * 1024 // 10MB default
 
@@ -53,11 +54,8 @@ export class AttachmentService {
     }
 
     let isAllowed = false
-    for (const allowedPrefix of ALLOWED_MIME_TYPES) {
-      if (file.mimeType.startsWith(allowedPrefix)) {
-        isAllowed = true
-        break
-      }
+    if (ALLOWED_MIME_TYPES.has(file.mimeType)) {
+      isAllowed = true
     }
     if (!isAllowed) {
       throw new AppError('VALIDATION_ERROR', '不支持的文件类型')
@@ -147,11 +145,19 @@ export class AttachmentService {
       throw new AppError('FORBIDDEN', '只能删除自己的附件')
     }
 
-    await this.storage.delete(attachment.storageKey)
-
-    return db.attachment.delete({
+    const deleted = await db.attachment.delete({
       where: { id: attachmentId },
     })
+
+    // Delete file from storage AFTER the DB record is removed so a storage
+    // failure never leaves a dangling (un-deletable) DB row.
+    try {
+      await this.storage.delete(attachment.storageKey)
+    } catch {
+      // File already gone or transient error — record is removed either way.
+    }
+
+    return deleted
   }
 
   async getById(attachmentId: string, userId: string) {

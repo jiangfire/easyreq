@@ -203,3 +203,219 @@ export function EditableBody({
     </div>
   )
 }
+
+const PRIORITY_CHOICES = [
+  { value: 'LOW', label: '低' },
+  { value: 'MEDIUM', label: '中' },
+  { value: 'HIGH', label: '高' },
+  { value: 'CRITICAL', label: '紧急' },
+]
+
+export function EditablePriority({
+  requirementId,
+  initialPriority,
+  canEdit,
+}: {
+  requirementId: string
+  initialPriority: string
+  canEdit: boolean
+}) {
+  const router = useRouter()
+  const [priority, setPriority] = useState(initialPriority)
+  const [saving, setSaving] = useState(false)
+
+  async function save(next: string) {
+    if (next === priority) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/requirements/${requirementId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: next }),
+      })
+      if (res.ok) {
+        setPriority(next)
+        router.refresh()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!canEdit) {
+    return <span className="text-sm text-gray-600">{priority}</span>
+  }
+
+  return (
+    <select
+      value={priority}
+      disabled={saving}
+      onChange={(e) => save(e.target.value)}
+      className="rounded-md border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:outline-none"
+    >
+      {PRIORITY_CHOICES.map((p) => (
+        <option key={p.value} value={p.value}>
+          {p.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+export function EditableExpectedDate({
+  requirementId,
+  initialExpectedDate,
+  canEdit,
+}: {
+  requirementId: string
+  initialExpectedDate: string | null
+  canEdit: boolean
+}) {
+  const router = useRouter()
+  const [value, setValue] = useState(
+    initialExpectedDate ? initialExpectedDate.slice(0, 10) : '',
+  )
+  const [saving, setSaving] = useState(false)
+
+  async function save(next: string) {
+    setSaving(true)
+    try {
+      const payload = next
+        ? { expectedDate: new Date(next).toISOString() }
+        : { expectedDate: null }
+      const res = await fetch(`/api/requirements/${requirementId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        setValue(next)
+        router.refresh()
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <span className="text-sm text-gray-600">
+        {initialExpectedDate
+          ? new Date(initialExpectedDate).toLocaleDateString('zh-CN')
+          : '未设置'}
+      </span>
+    )
+  }
+
+  return (
+    <input
+      type="date"
+      value={value}
+      disabled={saving}
+      onChange={(e) => save(e.target.value)}
+      className="rounded-md border border-gray-300 px-2 py-0.5 text-sm focus:border-blue-500 focus:outline-none"
+    />
+  )
+}
+
+export function EditableAcceptanceCriteria({
+  requirementId,
+  initialAcceptanceCriteria,
+  canEdit,
+}: {
+  requirementId: string
+  initialAcceptanceCriteria: string | null
+  canEdit: boolean
+}) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(initialAcceptanceCriteria ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/requirements/${requirementId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acceptanceCriteria: text }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error?.message ?? '保存失败')
+        setSaving(false)
+        return
+      }
+      setEditing(false)
+      router.refresh()
+    } catch {
+      setError('网络错误')
+      setSaving(false)
+    }
+  }
+
+  if (!canEdit) {
+    return initialAcceptanceCriteria ? (
+      <p className="text-sm whitespace-pre-wrap text-gray-600">
+        {initialAcceptanceCriteria}
+      </p>
+    ) : (
+      <p className="text-sm text-gray-400">未设置</p>
+    )
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-2">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={5000}
+          autoFocus
+          rows={4}
+          className="w-full rounded-md border border-blue-300 px-2 py-1 text-sm focus:outline-none"
+          placeholder="验收标准..."
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {saving ? '保存中...' : '保存'}
+          </button>
+          <button
+            onClick={() => {
+              setText(initialAcceptanceCriteria ?? '')
+              setEditing(false)
+            }}
+            className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100"
+          >
+            取消
+          </button>
+          {error && <span className="text-xs text-red-600">{error}</span>}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="group">
+      {initialAcceptanceCriteria ? (
+        <p className="text-sm whitespace-pre-wrap text-gray-600">
+          {initialAcceptanceCriteria}
+        </p>
+      ) : (
+        <p className="text-sm text-gray-400 italic">未设置</p>
+      )}
+      <button
+        onClick={() => setEditing(true)}
+        className="mt-1 text-xs text-gray-400 hover:text-gray-600"
+      >
+        {initialAcceptanceCriteria ? '编辑验收标准' : '添加验收标准'}
+      </button>
+    </div>
+  )
+}

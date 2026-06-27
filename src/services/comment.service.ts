@@ -117,6 +117,11 @@ export class CommentService {
       throw new AppError('NOT_FOUND', '评论不存在')
     }
 
+    // Don't allow editing a soft-deleted comment (it should appear gone).
+    if (comment.isDeleted) {
+      throw new AppError('NOT_FOUND', '评论不存在')
+    }
+
     const membership = await db.projectMember.findUnique({
       where: {
         userId_projectId: { userId, projectId: comment.requirement.projectId },

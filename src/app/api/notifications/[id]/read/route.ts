@@ -15,7 +15,7 @@ export async function PATCH(
   const { id } = await ctx.params
 
   try {
-    await notificationService.markAsRead(user.id, id)
+    await notificationService.markOneRead(user.id, id)
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof AppError) {
