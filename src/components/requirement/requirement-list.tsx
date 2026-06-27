@@ -11,6 +11,8 @@ type RequirementItem = {
   createdAt: Date
   updatedAt: Date
   author: { id: string; name: string }
+  assignee?: { id: string; name: string } | null
+  labels?: { label: { id: string; name: string; color: string } }[]
   _count: { comments: number; votes: number }
 }
 
@@ -21,31 +23,61 @@ type Pagination = {
   totalPages: number
 }
 
+type SearchParams = {
+  status?: string
+  priority?: string
+  sortBy?: string
+  assigneeId?: string
+  labelIds?: string
+}
+
 export function RequirementList({
   requirements,
   pagination,
   projectSlug,
+  labels,
+  members,
   searchParams,
 }: {
   requirements: RequirementItem[]
   pagination: Pagination
   projectSlug: string
-  searchParams: { status?: string; sortBy?: string }
+  labels: { id: string; name: string; color: string }[]
+  members: { id: string; name: string }[]
+  searchParams: SearchParams
 }) {
   return (
     <div>
       {/* Filters */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-gray-200 pb-3">
-        <StatusFilter current={searchParams.status} projectSlug={projectSlug} />
-        <SortFilter current={searchParams.sortBy} projectSlug={projectSlug} status={searchParams.status} />
-        <span className="ml-auto text-xs text-gray-400">{pagination.totalItems} 个需求</span>
+      <div className="mb-4 space-y-2 border-b border-gray-200 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusFilter current={searchParams.status} projectSlug={projectSlug} sp={searchParams} />
+          <SortFilter current={searchParams.sortBy} projectSlug={projectSlug} sp={searchParams} />
+          <span className="ml-auto text-xs text-gray-400">{pagination.totalItems} 个需求</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <AssigneeFilter
+            current={searchParams.assigneeId}
+            projectSlug={projectSlug}
+            members={members}
+            sp={searchParams}
+          />
+          <LabelFilter
+            current={searchParams.labelIds}
+            projectSlug={projectSlug}
+            labels={labels}
+            sp={searchParams}
+          />
+        </div>
       </div>
 
       {/* List */}
       {requirements.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
           <p className="text-sm text-gray-400">
-            {searchParams.status ? '该状态下暂无需求' : '暂无需求，在上方输入框提交第一个吧'}
+            {searchParams.status || searchParams.assigneeId || searchParams.labelIds
+              ? '当前筛选条件下暂无需求'
+              : '暂无需求，在上方输入框提交第一个吧'}
           </p>
         </div>
       ) : (
@@ -66,13 +98,36 @@ export function RequirementList({
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-gray-900">{req.title}</span>
                 </div>
-                <div className="mt-0.5 flex items-center gap-2">
+                <div className="mt-0.5 flex flex-wrap items-center gap-2">
                   <StatusBadge status={req.status} />
+                  {req.labels && req.labels.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      {req.labels.map((rl) => (
+                        <span
+                          key={rl.label.id}
+                          className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                          style={{ backgroundColor: rl.label.color }}
+                        >
+                          {rl.label.name}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400">
                     由 {req.author.name} 提交于 {formatDate(req.createdAt)}
                   </span>
                 </div>
               </div>
+
+              {/* Assignee */}
+              {req.assignee && (
+                <div className="hidden shrink-0 items-center gap-1 text-xs text-gray-500 sm:flex">
+                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-[10px] font-medium text-gray-600">
+                    {req.assignee.name.charAt(0)}
+                  </div>
+                  {req.assignee.name}
+                </div>
+              )}
 
               {/* Priority */}
               <div className="hidden shrink-0 sm:block">
@@ -107,7 +162,7 @@ export function RequirementList({
       {pagination.totalPages > 1 && (
         <div className="mt-4 flex items-center justify-center gap-2">
           {pagination.page > 1 && (
-            <PageLink page={pagination.page - 1} projectSlug={projectSlug} searchParams={searchParams}>
+            <PageLink page={pagination.page - 1} projectSlug={projectSlug} sp={searchParams}>
               ← 上一页
             </PageLink>
           )}
@@ -115,7 +170,7 @@ export function RequirementList({
             {pagination.page} / {pagination.totalPages}
           </span>
           {pagination.page < pagination.totalPages && (
-            <PageLink page={pagination.page + 1} projectSlug={projectSlug} searchParams={searchParams}>
+            <PageLink page={pagination.page + 1} projectSlug={projectSlug} sp={searchParams}>
               下一页 →
             </PageLink>
           )}
@@ -125,12 +180,31 @@ export function RequirementList({
   )
 }
 
-function StatusFilter({ current, projectSlug }: { current?: string; projectSlug: string }) {
+function buildHref(projectSlug: string, sp: SearchParams, overrides: Partial<SearchParams> = {}) {
+  const merged = { ...sp, ...overrides }
+  const params = new URLSearchParams()
+  if (merged.status && merged.status !== 'all') params.set('status', merged.status)
+  if (merged.priority) params.set('priority', merged.priority)
+  if (merged.sortBy) params.set('sortBy', merged.sortBy)
+  if (merged.assigneeId) params.set('assigneeId', merged.assigneeId)
+  if (merged.labelIds) params.set('labelIds', merged.labelIds)
+  return `/projects/${projectSlug}${params.toString() ? `?${params}` : ''}`
+}
+
+function StatusFilter({
+  current,
+  projectSlug,
+  sp,
+}: {
+  current?: string
+  projectSlug: string
+  sp: SearchParams
+}) {
   const all = !current || current === 'all'
   return (
     <div className="flex items-center gap-1">
       <Link
-        href={`/projects/${projectSlug}`}
+        href={buildHref(projectSlug, sp, { status: undefined })}
         className={`rounded-md px-2.5 py-1 text-xs font-medium ${all ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
       >
         全部
@@ -141,7 +215,7 @@ function StatusFilter({ current, projectSlug }: { current?: string; projectSlug:
         return (
           <Link
             key={s}
-            href={`/projects/${projectSlug}?status=${s}`}
+            href={buildHref(projectSlug, sp, { status: s })}
             className={`rounded-md px-2.5 py-1 text-xs font-medium ${active ? `${config.bgColor} ${config.color}` : 'text-gray-600 hover:bg-gray-100'}`}
           >
             {config.label}
@@ -155,11 +229,11 @@ function StatusFilter({ current, projectSlug }: { current?: string; projectSlug:
 function SortFilter({
   current,
   projectSlug,
-  status,
+  sp,
 }: {
   current?: string
   projectSlug: string
-  status?: string
+  sp: SearchParams
 }) {
   const sortBy = current ?? 'createdAt'
   const options = [
@@ -169,43 +243,112 @@ function SortFilter({
   ]
 
   return (
-    <select
-      value={sortBy}
-      onChange={(e) => {
-        const params = new URLSearchParams()
-        if (status && status !== 'all') params.set('status', status)
-        if (e.target.value !== 'createdAt') params.set('sortBy', e.target.value)
-        window.location.href = `/projects/${projectSlug}${params.toString() ? `?${params}` : ''}`
-      }}
-      className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600"
-    >
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-gray-400">排序:</span>
+      {options.map((o) => {
+        const active = sortBy === o.value
+        return (
+          <Link
+            key={o.value}
+            href={buildHref(projectSlug, sp, { sortBy: o.value === 'createdAt' ? undefined : o.value })}
+            className={`rounded-md px-2 py-1 text-xs font-medium ${active ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+          >
+            {o.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
+function AssigneeFilter({
+  current,
+  projectSlug,
+  members,
+  sp,
+}: {
+  current?: string
+  projectSlug: string
+  members: { id: string; name: string }[]
+  sp: SearchParams
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-gray-400">指派:</span>
+      <Link
+        href={buildHref(projectSlug, sp, { assigneeId: undefined })}
+        className={`rounded-md px-2 py-1 text-xs font-medium ${!current ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+      >
+        全部
+      </Link>
+      {members.map((m) => (
+        <Link
+          key={m.id}
+          href={buildHref(projectSlug, sp, { assigneeId: m.id })}
+          className={`rounded-md px-2 py-1 text-xs font-medium ${current === m.id ? 'bg-gray-200 text-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          {m.name}
+        </Link>
       ))}
-    </select>
+    </div>
+  )
+}
+
+function LabelFilter({
+  current,
+  projectSlug,
+  labels,
+  sp,
+}: {
+  current?: string
+  projectSlug: string
+  labels: { id: string; name: string; color: string }[]
+  sp: SearchParams
+}) {
+  if (labels.length === 0) return null
+  const currentIds = current ? current.split(',') : []
+
+  function toggle(labelId: string) {
+    const next = currentIds.includes(labelId)
+      ? currentIds.filter((id) => id !== labelId)
+      : [...currentIds, labelId]
+    return buildHref(projectSlug, sp, { labelIds: next.length > 0 ? next.join(',') : undefined })
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-gray-400">标签:</span>
+      {labels.map((l) => {
+        const active = currentIds.includes(l.id)
+        return (
+          <Link
+            key={l.id}
+            href={toggle(l.id)}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${active ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            style={active ? { backgroundColor: l.color } : undefined}
+          >
+            {l.name}
+          </Link>
+        )
+      })}
+    </div>
   )
 }
 
 function PageLink({
   page,
   projectSlug,
-  searchParams,
+  sp,
   children,
 }: {
   page: number
   projectSlug: string
-  searchParams: { status?: string; sortBy?: string }
+  sp: SearchParams
   children: React.ReactNode
 }) {
-  const params = new URLSearchParams()
-  if (searchParams.status && searchParams.status !== 'all') params.set('status', searchParams.status)
-  if (searchParams.sortBy) params.set('sortBy', searchParams.sortBy)
-  params.set('page', String(page))
   return (
     <Link
-      href={`/projects/${projectSlug}?${params}`}
+      href={`${buildHref(projectSlug, sp)}${buildHref(projectSlug, sp).includes('?') ? '&' : '?'}page=${page}`}
       className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
     >
       {children}

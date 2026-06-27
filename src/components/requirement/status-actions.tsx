@@ -8,9 +8,11 @@ import type { ReqStatus } from '@/lib/transitions'
 export function StatusActions({
   requirementId,
   availableTargets,
+  compact = false,
 }: {
   requirementId: string
   availableTargets: ReqStatus[]
+  compact?: boolean
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
@@ -77,7 +79,7 @@ export function StatusActions({
                   : isPrimary
                     ? 'bg-green-600 text-white hover:bg-green-700'
                     : `border border-gray-300 text-gray-700 hover:bg-gray-50 ${config.color}`
-              }`}
+              } ${compact ? 'whitespace-nowrap' : ''}`}
             >
               {loading === target ? '处理中...' : config.label}
             </button>

@@ -3,6 +3,10 @@ import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import { authConfig } from '@/lib/auth.config'
+import { rateLimit, resetRateLimit } from '@/lib/rate-limit'
+
+const LOGIN_MAX_ATTEMPTS = 10
+const LOGIN_WINDOW_MS = 15 * 60 * 1000 // 10 attempts per 15 minutes per email
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   ...authConfig,
@@ -20,6 +24,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null
         }
 
+        const lowerEmail = email.toLowerCase()
+        const limit = rateLimit(`login:${lowerEmail}`, {
+          max: LOGIN_MAX_ATTEMPTS,
+          windowMs: LOGIN_WINDOW_MS,
+        })
+        if (!limit.allowed) {
+          throw new Error('RATE_LIMITED')
+        }
+
         const user = await db.user.findUnique({
           where: { email },
         })
@@ -32,6 +45,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!isValid) {
           return null
         }
+
+        resetRateLimit(`login:${lowerEmail}`)
 
         return {
           id: user.id,

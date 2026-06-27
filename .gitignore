@@ -43,6 +43,7 @@ src/generated/
 
 # uploads (local file storage)
 /uploads
+/public/uploads
 
 # vercel
 .vercel

@@ -5,11 +5,14 @@ import { StatusTimeline } from '@/components/requirement/status-timeline'
 import { StatusActions } from '@/components/requirement/status-actions'
 import { VoteButton } from '@/components/requirement/vote-button'
 import { CommentSection } from '@/components/comment/comment-section'
+import { EditableTitle, EditableBody } from '@/components/requirement/editable-fields'
 import { PRIORITY_CONFIG } from '@/lib/constants'
 import { getAvailableTransitions, type ReqStatus } from '@/lib/transitions'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeSanitize from 'rehype-sanitize'
+import { getAttachmentPublicUrl } from '@/lib/storage'
+import Image from 'next/image'
+import { LabelSelector } from '@/components/requirement/label-selector'
+import { AssigneeSelector } from '@/components/requirement/assignee-selector'
+import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
@@ -34,6 +37,19 @@ export default async function RequirementDetailPage({
     user.role as never,
   )
 
+  const members = await db.projectMember.findMany({
+    where: { projectId: requirement.project.id },
+    select: { userId: true, user: { select: { name: true } } },
+  })
+
+  const labels = await db.label.findMany({
+    where: { projectId: requirement.project.id },
+    orderBy: { name: 'asc' },
+  })
+
+  const isManager = user.role === 'MANAGER' || user.role === 'ADMIN'
+  const isAuthor = requirement.authorId === user.id
+
   return (
     <div className="mx-auto max-w-5xl">
       {/* Breadcrumb */}
@@ -54,7 +70,13 @@ export default async function RequirementDetailPage({
               <span className="text-lg font-bold text-gray-400">#{requirement.number}</span>
               <StatusBadge status={requirement.status} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">{requirement.title}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              <EditableTitle
+                requirementId={requirement.id}
+                initialTitle={requirement.title}
+                canEdit={isAuthor}
+              />
+            </h1>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-gray-500">
               <span>
                 由 <strong className="text-gray-700">{requirement.author.name}</strong> 提交于{' '}
@@ -76,14 +98,50 @@ export default async function RequirementDetailPage({
           )}
 
           {/* Body */}
-          {requirement.body ? (
-            <div className="mb-6 prose prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                {requirement.body}
-              </ReactMarkdown>
+          <EditableBody
+            requirementId={requirement.id}
+            initialBody={requirement.body}
+            canEdit={isAuthor}
+          />
+
+          {/* Attachments */}
+          {requirement.attachments.length > 0 && (
+            <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
+              <h3 className="mb-3 text-sm font-semibold text-gray-700">附件 ({requirement.attachments.length})</h3>
+              <div className="flex flex-wrap gap-3">
+                {requirement.attachments.map((a) => {
+                  const url = getAttachmentPublicUrl(a.storageProvider, a.storageKey)
+                  const isImage = a.mimeType.startsWith('image/')
+                  return (
+                    <a
+                      key={a.id}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex max-w-[200px] flex-col overflow-hidden rounded-md border border-gray-200 bg-white hover:border-blue-300"
+                    >
+                      {isImage ? (
+                        <Image
+                          src={url}
+                          alt={a.fileName}
+                          width={200}
+                          height={96}
+                          unoptimized
+                          className="h-24 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-24 w-full items-center justify-center bg-gray-100">
+                          <span className="text-2xl">📄</span>
+                        </div>
+                      )}
+                      <div className="truncate px-2 py-1.5 text-xs text-gray-700">
+                        {a.fileName}
+                      </div>
+                    </a>
+                  )
+                })}
+              </div>
             </div>
-          ) : (
-            <p className="mb-6 text-sm text-gray-400 italic">暂无详细描述</p>
           )}
 
           {/* Acceptance Criteria */}
@@ -124,16 +182,20 @@ export default async function RequirementDetailPage({
               </span>
             </SidebarItem>
             <SidebarItem label="指派给">
-              {requirement.assignee ? (
-                <span className="flex items-center gap-1.5 text-sm">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs text-blue-700">
-                    {requirement.assignee.name.charAt(0)}
-                  </span>
-                  {requirement.assignee.name}
-                </span>
-              ) : (
-                <span className="text-sm text-gray-400">未指派</span>
-              )}
+              <AssigneeSelector
+                requirementId={requirement.id}
+                members={members.map((m) => ({ userId: m.userId, name: m.user.name }))}
+                assignee={requirement.assignee ? { userId: requirement.assignee.id, name: requirement.assignee.name } : null}
+                canEdit={isManager}
+              />
+            </SidebarItem>
+            <SidebarItem label="标签">
+              <LabelSelector
+                requirementId={requirement.id}
+                labels={labels}
+                selected={requirement.labels.map((l) => l.label)}
+                canEdit={isManager || isAuthor}
+              />
             </SidebarItem>
             <SidebarItem label="期望日期">
               {requirement.expectedDate ? (

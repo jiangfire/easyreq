@@ -2,31 +2,44 @@ import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
 import type { CreateRequirementInput } from '@/lib/validation/requirement'
 import {
+  notificationService,
+  requirementLink,
+  statusLabel,
+} from '@/services/notification.service'
+import {
   canTransition,
   isQuickPathTransition,
   hasTransitionPermission,
   type ReqStatus,
   type Role,
 } from '@/lib/transitions'
+import { notificationChannel } from '@/lib/notifications/channel'
 
 export class RequirementService {
   /**
+   * Broadcast a `requirement_updated` SSE event to all project members.
+   */
+  private async broadcastUpdated(requirementId: string, projectId: string, field: string) {
+    const members = await db.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true },
+    })
+    notificationChannel.publishToUsers(
+      members.map((m) => m.userId),
+      { event: 'requirement_updated', data: { id: requirementId, projectId, field } },
+    )
+  }
+  /**
    * Get the next requirement number for a project.
-   * Uses a transaction with row-level lock for concurrency safety.
+   * Uses an atomic increment for concurrency safety.
    */
   async getNextNumber(projectId: string): Promise<number> {
-    return db.$transaction(async (tx) => {
-      const project = await tx.project.findUniqueOrThrow({
-        where: { id: projectId },
-        select: { lastRequirementNumber: true },
-      })
-      const nextNumber = project.lastRequirementNumber + 1
-      await tx.project.update({
-        where: { id: projectId },
-        data: { lastRequirementNumber: nextNumber },
-      })
-      return nextNumber
+    const project = await db.project.update({
+      where: { id: projectId },
+      data: { lastRequirementNumber: { increment: 1 } },
+      select: { lastRequirementNumber: true },
     })
+    return project.lastRequirementNumber
   }
 
   async create(projectId: string, authorId: string, input: CreateRequirementInput) {
@@ -47,7 +60,7 @@ export class RequirementService {
         number,
         title: input.title,
         body: input.body ?? null,
-        priority: input.priority,
+        priority: input.priority ?? 'MEDIUM',
         expectedDate: input.expectedDate ? new Date(input.expectedDate) : null,
         acceptanceCriteria: input.acceptanceCriteria ?? null,
       },
@@ -68,6 +81,11 @@ export class RequirementService {
             id: true,
             slug: true,
             members: { select: { userId: true } },
+          },
+        },
+        labels: {
+          select: {
+            label: { select: { id: true, name: true, color: true } },
           },
         },
         statusLogs: {
@@ -91,6 +109,12 @@ export class RequirementService {
         _count: {
           select: { comments: { where: { isDeleted: false } }, votes: true, attachments: true },
         },
+        attachments: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            uploader: { select: { id: true, name: true } },
+          },
+        },
       },
     })
 
@@ -112,6 +136,9 @@ export class RequirementService {
     userId: string,
     options: {
       status?: string[]
+      priority?: string[]
+      assigneeId?: string
+      labelIds?: string[]
       page?: number
       pageSize?: number
       sortBy?: string
@@ -134,12 +161,19 @@ export class RequirementService {
         ? { votes: { _count: 'desc' as const } }
         : { [sortBy]: 'desc' as const }
 
+    const where = {
+      projectId,
+      ...(options.status ? { status: { in: options.status as never[] } } : {}),
+      ...(options.priority ? { priority: { in: options.priority as never[] } } : {}),
+      ...(options.assigneeId ? { assigneeId: options.assigneeId } : {}),
+      ...(options.labelIds && options.labelIds.length > 0
+        ? { labels: { some: { labelId: { in: options.labelIds } } } }
+        : {}),
+    }
+
     const [requirements, total] = await Promise.all([
       db.requirement.findMany({
-        where: {
-          projectId,
-          ...(options.status ? { status: { in: options.status as never[] } } : {}),
-        },
+        where,
         select: {
           id: true,
           number: true,
@@ -149,6 +183,8 @@ export class RequirementService {
           createdAt: true,
           updatedAt: true,
           author: { select: { id: true, name: true } },
+          assignee: { select: { id: true, name: true } },
+          labels: { select: { label: { select: { id: true, name: true, color: true } } } },
           _count: {
             select: { comments: { where: { isDeleted: false } }, votes: true },
           },
@@ -158,12 +194,7 @@ export class RequirementService {
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      db.requirement.count({
-        where: {
-          projectId,
-          ...(options.status ? { status: { in: options.status as never[] } } : {}),
-        },
-      }),
+      db.requirement.count({ where }),
     ])
 
     return {
@@ -176,6 +207,117 @@ export class RequirementService {
       },
     }
   }
+  async update(
+    id: string,
+    userId: string,
+    userRole: string,
+    data: Partial<{
+      title: string
+      body: string | null
+      priority: string
+      expectedDate: string | null
+      acceptanceCriteria: string | null
+      assigneeId: string | null
+      labelIds: string[]
+    }>,
+  ) {
+    const requirement = await db.requirement.findUniqueOrThrow({
+      where: { id },
+      include: {
+        project: { select: { id: true, slug: true, members: { select: { userId: true } } } },
+      },
+    })
+
+    const isMember = requirement.project.members.some((m) => m.userId === userId)
+    if (!isMember) {
+      throw new AppError('FORBIDDEN', '你不是该项目成员')
+    }
+
+    const isAuthor = requirement.authorId === userId
+    const isManager = userRole === 'MANAGER' || userRole === 'ADMIN'
+
+    // Field-level permissions (spec: author 改 title/body; Manager 改 priority/assigneeId/expectedDate/acceptanceCriteria)
+    const authorFields = ['title', 'body'] as const
+    const managerFields = [
+      'priority',
+      'assigneeId',
+      'expectedDate',
+      'acceptanceCriteria',
+      'labelIds',
+    ] as const
+
+    for (const field of authorFields) {
+      if (data[field] !== undefined && !isAuthor) {
+        throw new AppError('FORBIDDEN', `只能编辑自己的需求${field === 'title' ? '标题' : '描述'}`)
+      }
+    }
+    for (const field of managerFields) {
+      if (data[field] !== undefined && !isManager) {
+        throw new AppError('FORBIDDEN', '只有管理者可修改该字段')
+      }
+    }
+
+    // Validate assignee is a project member (or null to unassign)
+    if (data.assigneeId && data.assigneeId !== requirement.assigneeId) {
+      const assigneeMember = await db.projectMember.findUnique({
+        where: {
+          userId_projectId: {
+            userId: data.assigneeId,
+            projectId: requirement.project.id,
+          },
+        },
+      })
+      if (!assigneeMember) {
+        throw new AppError('VALIDATION_ERROR', '指派人必须是项目成员')
+      }
+    }
+
+    const updateData: Record<string, unknown> = {}
+    if (data.title !== undefined) updateData.title = data.title
+    if (data.body !== undefined) updateData.body = data.body
+    if (data.priority !== undefined) updateData.priority = data.priority
+    if (data.expectedDate !== undefined) {
+      updateData.expectedDate = data.expectedDate ? new Date(data.expectedDate) : null
+    }
+    if (data.acceptanceCriteria !== undefined) updateData.acceptanceCriteria = data.acceptanceCriteria
+    if (data.assigneeId !== undefined) updateData.assigneeId = data.assigneeId
+
+    if (data.labelIds !== undefined) {
+      updateData.labels = {
+        deleteMany: {},
+        create: data.labelIds.map((labelId) => ({ labelId })),
+      }
+    }
+
+    const updated = await db.requirement.update({
+      where: { id },
+      data: updateData,
+      include: {
+        labels: {
+          select: {
+            label: { select: { id: true, name: true, color: true } },
+          },
+        },
+      },
+    })
+
+    if (data.assigneeId && data.assigneeId !== requirement.assigneeId) {
+      await notificationService.createMany([
+        {
+          userId: data.assigneeId,
+          type: 'ASSIGNMENT',
+          title: `需求 #${requirement.number} 被指派给你`,
+          body: requirement.title,
+          link: requirementLink(requirement.project.slug, requirement.number),
+        },
+      ])
+    }
+
+    await this.broadcastUpdated(id, requirement.project.id, 'fields')
+
+    return updated
+  }
+
   async transition(
     id: string,
     operatorId: string,
@@ -183,7 +325,21 @@ export class RequirementService {
     toStatus: ReqStatus,
     note?: string,
   ) {
-    const requirement = await db.requirement.findUniqueOrThrow({ where: { id } })
+    const requirement = await db.requirement.findUnique({
+      where: { id },
+      include: {
+        project: { select: { id: true, slug: true, members: { select: { userId: true } } } },
+      },
+    })
+
+    if (!requirement) {
+      throw new AppError('NOT_FOUND', '需求不存在')
+    }
+
+    const isMember = requirement.project.members.some((m) => m.userId === operatorId)
+    if (!isMember) {
+      throw new AppError('FORBIDDEN', '你不是该项目成员')
+    }
 
     const fromStatus = requirement.status as ReqStatus
     const isQuickPath = isQuickPathTransition(fromStatus, toStatus)
@@ -216,7 +372,84 @@ export class RequirementService {
       }),
     ])
 
+    // Spec: rejected transition sends REJECTED notification to author
+    if (toStatus === 'REJECTED') {
+      await this.notifyRejected(requirement, operatorId)
+    } else {
+      await this.notifyTransition(requirement, fromStatus, toStatus, operatorId)
+    }
+
+    await this.broadcastUpdated(id, requirement.project.id, 'status')
+
     return updated
+  }
+
+  private async notifyRejected(
+    requirement: {
+      id: string
+      number: number
+      title: string
+      authorId: string
+      project: { slug: string }
+    },
+    operatorId: string,
+  ) {
+    const link = requirementLink(requirement.project.slug, requirement.number)
+    if (requirement.authorId !== operatorId) {
+      await notificationService.createMany([
+        {
+          userId: requirement.authorId,
+          type: 'REJECTED',
+          title: `需求 #${requirement.number} 被驳回`,
+          body: requirement.title,
+          link,
+        },
+      ])
+    }
+  }
+
+  private async notifyTransition(
+    requirement: {
+      id: string
+      number: number
+      title: string
+      authorId: string
+      assigneeId: string | null
+      status: string
+      project: { slug: string }
+    },
+    fromStatus: string,
+    toStatus: string,
+    operatorId: string,
+  ) {
+    // Spec: STATUS_CHANGE recipients = author + assignee only
+    const notified = new Set<string>()
+    const targets = []
+    const link = requirementLink(requirement.project.slug, requirement.number)
+
+    if (requirement.authorId !== operatorId) {
+      notified.add(requirement.authorId)
+      targets.push({
+        userId: requirement.authorId,
+        type: 'STATUS_CHANGE' as const,
+        title: `需求 #${requirement.number} 状态变更`,
+        body: `${statusLabel(fromStatus as never)} → ${statusLabel(toStatus as never)}：${requirement.title}`,
+        link,
+      })
+    }
+
+    if (requirement.assigneeId && requirement.assigneeId !== operatorId && !notified.has(requirement.assigneeId)) {
+      notified.add(requirement.assigneeId)
+      targets.push({
+        userId: requirement.assigneeId,
+        type: 'STATUS_CHANGE' as const,
+        title: `指派给你的需求 #${requirement.number} 状态变更`,
+        body: `${statusLabel(fromStatus as never)} → ${statusLabel(toStatus as never)}`,
+        link,
+      })
+    }
+
+    await notificationService.createMany(targets)
   }
 }
 

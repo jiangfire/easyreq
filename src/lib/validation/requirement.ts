@@ -12,7 +12,7 @@ export const createRequirementSchema = z.object({
   acceptanceCriteria: z.string().max(5000).optional(),
 })
 
-export type CreateRequirementInput = z.infer<typeof createRequirementSchema>
+export type CreateRequirementInput = z.input<typeof createRequirementSchema>
 
 export const updateRequirementSchema = z.object({
   title: z.string().min(1).max(200).trim().optional(),
@@ -20,6 +20,8 @@ export const updateRequirementSchema = z.object({
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
   expectedDate: z.string().datetime().optional(),
   acceptanceCriteria: z.string().max(5000).optional(),
+  assigneeId: z.string().nullable().optional(),
+  labelIds: z.array(z.string()).optional(),
 })
 
 export type UpdateRequirementInput = z.infer<typeof updateRequirementSchema>

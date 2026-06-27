@@ -5,7 +5,7 @@ import { createCommentSchema } from '@/lib/validation/comment'
 import { AppError } from '@/lib/errors'
 
 export async function GET(
-  _req: NextRequest,
+  request: NextRequest,
   ctx: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser()
@@ -14,10 +14,12 @@ export async function GET(
   }
 
   const { id } = await ctx.params
+  const page = Number(request.nextUrl.searchParams.get('page') ?? '1')
+  const pageSize = Number(request.nextUrl.searchParams.get('pageSize') ?? '25')
 
   try {
-    const comments = await commentService.list(id, user.id)
-    return NextResponse.json(comments)
+    const result = await commentService.list(id, user.id, { page, pageSize })
+    return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json(error.toJSON(), { status: error.statusCode })

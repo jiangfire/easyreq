@@ -1,8 +1,10 @@
 import { getCurrentUser } from '@/services/auth.service'
 import { projectService } from '@/services/project.service'
 import { requirementService } from '@/services/requirement.service'
+import { labelService } from '@/services/label.service'
 import { RequirementList } from '@/components/requirement/requirement-list'
 import { QuickSubmit } from '@/components/requirement/quick-submit'
+import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
@@ -11,7 +13,14 @@ export default async function ProjectDetailPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ status?: string; sortBy?: string; page?: string }>
+  searchParams: Promise<{
+    status?: string
+    priority?: string
+    sortBy?: string
+    page?: string
+    assigneeId?: string
+    labelIds?: string
+  }>
 }) {
   const { slug } = await params
   const sp = await searchParams
@@ -25,12 +34,25 @@ export default async function ProjectDetailPage({
     notFound()
   }
 
-  const result = await requirementService.list(project.id, user.id, {
-    status: sp.status && sp.status !== 'all' ? [sp.status] : undefined,
-    sortBy: sp.sortBy ?? 'createdAt',
-    page: sp.page ? parseInt(sp.page, 10) : 1,
-    pageSize: 25,
-  })
+  const labelIds = sp.labelIds ? sp.labelIds.split(',').filter(Boolean) : undefined
+
+  const [result, labels, members] = await Promise.all([
+    requirementService.list(project.id, user.id, {
+      status: sp.status && sp.status !== 'all' ? [sp.status] : undefined,
+      priority: sp.priority ? sp.priority.split(',').filter(Boolean) : undefined,
+      assigneeId: sp.assigneeId || undefined,
+      labelIds,
+      sortBy: sp.sortBy ?? 'createdAt',
+      page: sp.page ? parseInt(sp.page, 10) : 1,
+      pageSize: 25,
+    }),
+    labelService.list(project.id),
+    db.projectMember.findMany({
+      where: { projectId: project.id },
+      include: { user: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ])
 
   return (
     <div>
@@ -54,7 +76,15 @@ export default async function ProjectDetailPage({
         requirements={result.data}
         pagination={result.pagination}
         projectSlug={slug}
-        searchParams={{ status: sp.status, sortBy: sp.sortBy }}
+        labels={labels}
+        members={members.map((m) => m.user)}
+        searchParams={{
+          status: sp.status,
+          priority: sp.priority,
+          sortBy: sp.sortBy,
+          assigneeId: sp.assigneeId,
+          labelIds: sp.labelIds,
+        }}
       />
 
       {/* Members */}

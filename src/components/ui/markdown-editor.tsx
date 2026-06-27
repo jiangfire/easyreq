@@ -1,11 +1,17 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
 
 type Mode = 'write' | 'preview' | 'split'
+
+type Member = {
+  id: string
+  name: string
+  email: string
+}
 
 export function MarkdownEditor({
   value,
@@ -13,18 +19,34 @@ export function MarkdownEditor({
   placeholder = '描述你的需求... 支持 Markdown',
   minHeight = '120px',
   onSubmit,
+  requirementId,
+  mentions = false,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   minHeight?: string
   onSubmit?: () => void
+  requirementId?: string
+  mentions?: boolean
 }) {
   const [mode, setMode] = useState<Mode>('write')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const mirrorRef = useRef<HTMLDivElement>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   const [preview, setPreview] = useState(value)
+  const [dragOver, setDragOver] = useState(false)
+
+  // Mention state
+  const [members, setMembers] = useState<Member[]>([])
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const [mentionPos, setMentionPos] = useState({ left: 0, top: 0 })
+  const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null)
 
   // Debounced preview update (300ms) to avoid jank on large documents
   useEffect(() => {
@@ -35,8 +57,118 @@ export function MarkdownEditor({
     }
   }, [value])
 
+  // Load members once when mentions are enabled
+  useEffect(() => {
+    if (!mentions || !requirementId) return
+    let cancelled = false
+    fetch(`/api/requirements/${requirementId}/members`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: Member[]) => {
+        if (!cancelled) setMembers(data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [mentions, requirementId])
+
+  const filteredMembers = useMemo(() => {
+    const q = mentionQuery.toLowerCase()
+    return members.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.email.toLowerCase().includes(q),
+    )
+  }, [members, mentionQuery])
+
+  const closeMention = useCallback(() => {
+    setMentionOpen(false)
+    setMentionQuery('')
+    setMentionIndex(0)
+    setMentionRange(null)
+  }, [])
+
+  const updateMentionState = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea || !mentions) return
+
+    const cursor = textarea.selectionStart
+    const textBeforeCursor = value.slice(0, cursor)
+    const match = /(?:^|\s)@([\w\u4e00-\u9fa5]*)$/.exec(textBeforeCursor)
+
+    if (!match) {
+      if (mentionOpen) closeMention()
+      return
+    }
+
+    const query = match[1]
+    const start = cursor - query.length - 1 // position of '@'
+    setMentionOpen(true)
+    setMentionQuery(query)
+    setMentionIndex(0)
+    setMentionRange({ start, end: cursor })
+
+    // Calculate dropdown position using mirror
+    const mirror = mirrorRef.current
+    if (mirror) {
+      const text = value.slice(0, start + 1)
+      mirror.textContent = text.replace(/\n$/, '\n\u200b') + '\u200b'
+      const rect = textarea.getBoundingClientRect()
+      const mirrorRect = mirror.getBoundingClientRect()
+      const lineHeight = parseInt(getComputedStyle(textarea).lineHeight, 10) || 20
+      setMentionPos({
+        left: mirrorRect.width - rect.width + 12,
+        top: mirrorRect.height - rect.height + lineHeight + 4,
+      })
+    }
+  }, [value, mentions, mentionOpen, closeMention])
+
+  const insertMention = useCallback(
+    (member: Member) => {
+      const textarea = textareaRef.current
+      if (!textarea || !mentionRange) return
+
+      const before = value.slice(0, mentionRange.start)
+      const after = value.slice(mentionRange.end)
+      const mention = `[@${member.name}](/users/${member.id})`
+      const newValue = before + mention + ' ' + after
+      onChange(newValue)
+      closeMention()
+
+      requestAnimationFrame(() => {
+        textarea.focus()
+        const pos = mentionRange.start + mention.length + 1
+        textarea.setSelectionRange(pos, pos)
+      })
+    },
+    [value, onChange, mentionRange, closeMention],
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (mentionOpen && filteredMembers.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setMentionIndex((i) => (i + 1) % filteredMembers.length)
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setMentionIndex((i) => (i - 1 + filteredMembers.length) % filteredMembers.length)
+          return
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault()
+          insertMention(filteredMembers[mentionIndex])
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          closeMention()
+          return
+        }
+      }
+
       // Ctrl/Cmd + Enter to submit
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault()
@@ -55,7 +187,7 @@ export function MarkdownEditor({
         })
       }
     },
-    [value, onChange, onSubmit],
+    [mentionOpen, filteredMembers, mentionIndex, insertMention, closeMention, onSubmit, value, onChange],
   )
 
   const insertText = useCallback(
@@ -78,6 +210,42 @@ export function MarkdownEditor({
     [value, onChange],
   )
 
+  const handleFileChange = useCallback(
+    async (files: FileList | null) => {
+      const file = files?.[0]
+      if (!file || !requirementId) return
+
+      setUploading(true)
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const res = await fetch(`/api/requirements/${requirementId}/attachments`, {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: { message: '上传失败' } }))
+          alert(data.error?.message || '上传失败')
+          return
+        }
+
+        const attachment = await res.json()
+        const isImage = attachment.mimeType.startsWith('image/')
+        const markdown = isImage
+          ? `![${attachment.fileName}](${attachment.url})`
+          : `[${attachment.fileName}](${attachment.url})`
+
+        insertText('\n' + markdown + '\n', '', '')
+      } finally {
+        setUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      }
+    },
+    [requirementId, insertText],
+  )
+
   return (
     <div className="overflow-hidden rounded-md border border-gray-300">
       {/* Toolbar */}
@@ -98,6 +266,28 @@ export function MarkdownEditor({
           <ToolbarButton onClick={() => insertText('[', '](https://)', '链接文字')} title="链接">
             <span className="text-xs">🔗</span>
           </ToolbarButton>
+          {mentions && (
+            <ToolbarButton onClick={() => insertText('@', '', '')} title="@提及">
+              <span className="text-xs">@</span>
+            </ToolbarButton>
+          )}
+          {requirementId && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => handleFileChange(e.target.files)}
+                disabled={uploading}
+              />
+              <ToolbarButton
+                onClick={() => fileInputRef.current?.click()}
+                title="上传附件"
+              >
+                <span className="text-xs">{uploading ? '...' : '📎'}</span>
+              </ToolbarButton>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -114,17 +304,69 @@ export function MarkdownEditor({
       </div>
 
       {/* Editor area */}
-      <div className={`flex ${mode === 'split' ? 'flex-row' : 'flex-col'}`}>
+      <div
+        className={`relative flex ${mode === 'split' ? 'flex-row' : 'flex-col'}`}
+        onDragOver={(e) => {
+          e.preventDefault()
+          if (requirementId) setDragOver(true)
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          void handleFileChange(e.dataTransfer.files)
+        }}
+      >
+        {dragOver && requirementId && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-blue-50/90 text-sm text-blue-700">
+            松开以上传附件
+          </div>
+        )}
         {mode !== 'preview' && (
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            className="w-full resize-y border-0 p-3 text-sm outline-none focus:ring-0"
-            style={{ minHeight }}
-          />
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value)
+                requestAnimationFrame(updateMentionState)
+              }}
+              onKeyDown={handleKeyDown}
+              onClick={updateMentionState}
+              onKeyUp={updateMentionState}
+              placeholder={placeholder}
+              className="w-full resize-y border-0 p-3 text-sm outline-none focus:ring-0"
+              style={{ minHeight }}
+            />
+            {/* Hidden mirror for cursor position */}
+            <div
+              ref={mirrorRef}
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 -z-10 whitespace-pre-wrap break-words p-3 text-sm opacity-0"
+              style={{ minHeight }}
+            >
+            </div>
+            {mentionOpen && filteredMembers.length > 0 && (
+              <div
+                className="absolute z-20 w-48 overflow-hidden rounded-md border border-gray-200 bg-white shadow-lg"
+                style={{ left: mentionPos.left, top: mentionPos.top }}
+              >
+                {filteredMembers.map((m, i) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => insertMention(m)}
+                    className={`flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-gray-100 ${
+                      i === mentionIndex ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <span className="font-medium text-gray-900">{m.name}</span>
+                    <span className="text-xs text-gray-500">{m.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {mode !== 'write' && (
           <div

@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/services/auth.service'
 import { db } from '@/lib/db'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { GlobalQuickSubmit } from '@/components/requirement/global-quick-submit'
 
 export default async function MainLayout({
   children,
@@ -30,6 +31,7 @@ export default async function MainLayout({
       <div className="flex flex-1 flex-col lg:pl-64">
         <Header user={user} />
         <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <GlobalQuickSubmit />
       </div>
     </div>
   )

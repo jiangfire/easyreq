@@ -70,13 +70,95 @@ export class ProjectService {
       where: { userId_projectId: { userId: requesterId, projectId } },
     })
 
-    if (!membership || membership.role !== 'OWNER') {
-      throw new AppError('FORBIDDEN', '只有项目 OWNER 可以添加成员')
+    // OWNER, MANAGER (project-level is not tracked; use global MANAGER), or ADMIN can manage members
+    const requester = await db.user.findUnique({
+      where: { id: requesterId },
+      select: { role: true },
+    })
+    const canManage =
+      membership?.role === 'OWNER' || requester?.role === 'MANAGER' || requester?.role === 'ADMIN'
+    if (!canManage) {
+      throw new AppError('FORBIDDEN', '只有 OWNER/MANAGER/ADMIN 可以添加成员')
+    }
+
+    const targetUser = await db.user.findUnique({ where: { id: userId } })
+    if (!targetUser) {
+      throw new AppError('NOT_FOUND', '用户不存在')
+    }
+
+    const existing = await db.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    })
+    if (existing) {
+      throw new AppError('CONFLICT', '该用户已是项目成员')
     }
 
     return db.projectMember.create({
       data: { userId, projectId, role: 'MEMBER' },
+      include: {
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
     })
+  }
+
+  async removeMember(projectId: string, userId: string, requesterId: string) {
+    const membership = await db.projectMember.findUnique({
+      where: { userId_projectId: { userId: requesterId, projectId } },
+    })
+
+    const requester = await db.user.findUnique({
+      where: { id: requesterId },
+      select: { role: true },
+    })
+    const canManage =
+      membership?.role === 'OWNER' || requester?.role === 'MANAGER' || requester?.role === 'ADMIN'
+    if (!canManage) {
+      throw new AppError('FORBIDDEN', '只有 OWNER/MANAGER/ADMIN 可以移除成员')
+    }
+
+    const target = await db.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    })
+    if (!target) {
+      throw new AppError('NOT_FOUND', '该用户不是项目成员')
+    }
+
+    if (target.role === 'OWNER') {
+      throw new AppError('FORBIDDEN', '不能移除项目 OWNER')
+    }
+
+    return db.projectMember.delete({
+      where: { userId_projectId: { userId, projectId } },
+    })
+  }
+
+  async getDetail(slug: string, userId: string) {
+    const project = await db.project.findUnique({
+      where: { slug },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+          },
+        },
+        _count: { select: { requirements: true } },
+      },
+    })
+
+    if (!project) {
+      throw new AppError('NOT_FOUND', '项目不存在')
+    }
+
+    const isMember = project.members.some((m) => m.userId === userId)
+    if (!isMember) {
+      throw new AppError('FORBIDDEN', '你不是该项目成员')
+    }
+
+    const myRole = project.members.find((m) => m.userId === userId)?.role ?? null
+
+    return { ...project, myRole }
   }
 }
 

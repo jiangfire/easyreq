@@ -192,6 +192,9 @@ async function main() {
     },
   ]
 
+  // Create requirements with per-project sequential numbering
+  const projectRequirements = new Map<string, number>()
+
   for (let i = 0; i < requirements.length; i++) {
     const r = requirements[i]
     const existing = await prisma.requirement.findFirst({
@@ -199,10 +202,13 @@ async function main() {
     })
     if (existing) {
       console.log(`  Requirement #${existing.number} already exists: ${r.title}`)
+      projectRequirements.set(r.project.id, Math.max(projectRequirements.get(r.project.id) ?? 0, existing.number))
       continue
     }
 
-    const number = i + 1
+    const number = (projectRequirements.get(r.project.id) ?? 0) + 1
+    projectRequirements.set(r.project.id, number)
+
     const req = await prisma.requirement.create({
       data: {
         projectId: r.project.id,
@@ -241,6 +247,14 @@ async function main() {
         skipDuplicates: true,
       })
     }
+  }
+
+  // Update lastRequirementNumber for each project based on seeded requirements
+  for (const [projectId, maxNumber] of projectRequirements.entries()) {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { lastRequirementNumber: maxNumber },
+    })
   }
 
   console.log('Seed complete!')

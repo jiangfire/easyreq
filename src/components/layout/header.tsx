@@ -1,4 +1,9 @@
+import Link from 'next/link'
+import { SearchBar } from './search-bar'
+
 import { signOut } from '@/lib/auth'
+import { notificationService } from '@/services/notification.service'
+import { NotificationBell } from './notification-bell'
 
 type HeaderUser = {
   id: string
@@ -16,23 +21,20 @@ const ROLE_LABELS: Record<string, string> = {
 }
 
 export async function Header({ user }: { user: HeaderUser }) {
+  const unreadCount = await notificationService.countUnread(user.id)
+
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-gray-200 bg-white/80 px-4 backdrop-blur lg:px-6">
       <div className="flex items-center gap-2 lg:ml-0 ml-12">
-        {/* Search placeholder */}
-        <div className="relative hidden sm:block">
-          <input
-            type="text"
-            placeholder="搜索需求..."
-            className="w-64 rounded-md border border-gray-300 px-3 py-1.5 pl-8 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          <svg className="absolute left-2.5 top-2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-        </div>
+        <SearchBar />
       </div>
 
       <div className="flex items-center gap-3">
+        <Link href="/admin" className="hidden text-sm text-gray-600 hover:text-gray-900 sm:block">
+          后台
+        </Link>
+        <NotificationBell initialCount={unreadCount} />
+
         {/* User info */}
         <div className="flex items-center gap-2">
           <span className="hidden text-sm font-medium text-gray-700 sm:block">{user.name}</span>

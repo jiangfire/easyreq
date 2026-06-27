@@ -28,6 +28,9 @@ export function CommentSection({
   const [newBody, setNewBody] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editBody, setEditBody] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
 
   async function handleSubmit() {
     if (!newBody.trim()) return
@@ -72,6 +75,42 @@ export function CommentSection({
     }
   }
 
+  function startEdit(commentId: string, body: string) {
+    setEditingId(commentId)
+    setEditBody(body)
+    setError(null)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditBody('')
+  }
+
+  async function handleSaveEdit(commentId: string) {
+    if (!editBody.trim()) return
+    setEditLoading(true)
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: editBody.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setError(data?.error?.message ?? '编辑失败')
+        setEditLoading(false)
+        return
+      }
+      const updated = await res.json()
+      setComments(comments.map((c) => (c.id === commentId ? updated : c)))
+      cancelEdit()
+      router.refresh()
+    } catch {
+      setError('网络错误')
+      setEditLoading(false)
+    }
+  }
+
   return (
     <div>
       {/* Comment list */}
@@ -87,19 +126,55 @@ export function CommentSection({
                   <span className="text-sm font-medium text-gray-700">{comment.author.name}</span>
                   <span className="text-xs text-gray-400">{formatDate(comment.createdAt)}</span>
                 </div>
-                <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                    {comment.body}
-                  </ReactMarkdown>
-                </div>
+                {editingId === comment.id ? (
+                  <div className="space-y-2">
+                    <MarkdownEditor
+                      value={editBody}
+                      onChange={setEditBody}
+                      onSubmit={() => handleSaveEdit(comment.id)}
+                      placeholder="编辑评论..."
+                      minHeight="60px"
+                      requirementId={requirementId}
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSaveEdit(comment.id)}
+                        disabled={editLoading || !editBody.trim()}
+                        className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {editLoading ? '保存中...' : '保存'}
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="rounded-md px-3 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                      {comment.body}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
-              {comment.author.id === currentUserId && (
-                <button
-                  onClick={() => handleDelete(comment.id)}
-                  className="mt-1 text-xs text-gray-400 hover:text-red-600"
-                >
-                  删除
-                </button>
+              {editingId !== comment.id && comment.author.id === currentUserId && (
+                <div className="mt-1 flex gap-3">
+                  <button
+                    onClick={() => startEdit(comment.id, comment.body)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() => handleDelete(comment.id)}
+                    className="text-xs text-gray-400 hover:text-red-600"
+                  >
+                    删除
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -116,8 +191,10 @@ export function CommentSection({
             value={newBody}
             onChange={setNewBody}
             onSubmit={handleSubmit}
-            placeholder="写下你的评论... 支持 Markdown"
+            placeholder="写下你的评论... 支持 Markdown，输入 @ 可提及成员"
             minHeight="80px"
+            requirementId={requirementId}
+            mentions
           />
           <div className="mt-2 flex items-center justify-between">
             {error ? (
