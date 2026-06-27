@@ -91,6 +91,21 @@ npm test
 
 集成测试用独立的测试库，从 `DATABASE_URL` 派生（`<db>_test`）。如果 URL 不是 `_test` 结尾，测试会直接拒绝启动，开发数据不会被擦。
 
+## 部署
+
+每次推送 `v*.*.*` 标签都会触发多架构 Docker 构建，并把镜像发到 `ghcr.io/jiangfire/easyreq`：
+
+```bash
+docker run -d --name easyreq -p 3000:3000 \
+  -e DATABASE_URL=postgresql://user:pass@db:5432/easyreqdb \
+  -e NEXTAUTH_SECRET=replace-me \
+  -e STORAGE_PROVIDER=s3 \
+  -e S3_BUCKET=my-bucket \
+  ghcr.io/jiangfire/easyreq:v0.1.0
+```
+
+镜像基于 `node:24-slim` 的 Next.js standalone 精简构建。首次部署前跑一次 Prisma 迁移，或者把 `npx prisma migrate deploy` 接进你自己的入口脚本。
+
 ## 协议
 
 MIT。可以使用、修改、拿去发布。详见 [LICENSE](LICENSE)。

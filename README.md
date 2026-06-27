@@ -91,6 +91,21 @@ npm test
 
 Integration tests use a separate database derived from your `DATABASE_URL` (`<db>_test`). The test runner refuses to start if the URL doesn't end in `_test`, so your dev data stays safe.
 
+## Deployment
+
+Every pushed tag (`v*.*.*`) triggers a multi-arch build and publishes a Docker image to `ghcr.io/jiangfire/easyreq`:
+
+```bash
+docker run -d --name easyreq -p 3000:3000 \
+  -e DATABASE_URL=postgresql://user:pass@db:5432/easyreqdb \
+  -e NEXTAUTH_SECRET=replace-me \
+  -e STORAGE_PROVIDER=s3 \
+  -e S3_BUCKET=my-bucket \
+  ghcr.io/jiangfire/easyreq:v0.1.0
+```
+
+The image is a slim Next.js standalone build on `node:24-slim`. Run Prisma migrations as a one-shot before the first deploy, or wire `npx prisma migrate deploy` into your entrypoint.
+
 ## License
 
 MIT. Use it, modify it, ship it. See [LICENSE](LICENSE).

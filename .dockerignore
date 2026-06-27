@@ -1,0 +1,65 @@
+# dependencies
+node_modules
+.pnp
+.pnp.*
+
+# testing
+coverage
+test-results
+playwright-report
+
+# next.js
+.next
+out
+build
+dist
+
+# production
+*.tgz
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files
+.env
+.env.local
+.env.*.local
+*.local
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# generated prisma client
+src/generated
+
+# source maps (we ship standalone, not full source)
+*.map
+.npmrc
+
+# tooling artifacts
+.vscode
+.idea
+.eslintcache
+.turbo
+
+# docker artifacts
+docker-compose*.yml
+
+# git
+.git
+.gitignore
+.gitattributes
+
+# docs (kept in repo, but not needed in the runtime image)
+docs/
+*.md
+!README.md
+LICENSE
