@@ -71,6 +71,7 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm test
 
@@ -104,15 +105,10 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 6
-        # Override the default MinIO entrypoint so we can pass runtime flags.
-        # The minio image expects `minio server <dir> [flags]`; we use a shell
-        # to combine them and pin the listen ports.
-        entrypoint: ""
-        command: >-
-          sh -c "
-          mkdir -p /data
-          minio server /data --address ':9000' --console-address ':9001'
-          "
+        # Override the default MinIO command so it listens on the right
+        # ports. The minio image's ENTRYPOINT is `["minio"]` and CMD is
+        # `["server", "/data"]`, so passing command: replaces CMD entirely.
+        command: server /data --address ":9000" --console-address ":9001"
     env:
       DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
       NEXTAUTH_SECRET: ci-secret-do-not-use-in-prod
@@ -131,6 +127,7 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - run: npx prisma generate
       - run: npx prisma migrate deploy
       - name: Wait for MinIO
         run: |
