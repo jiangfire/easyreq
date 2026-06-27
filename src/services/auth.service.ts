@@ -1,7 +1,16 @@
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
+import type { Role } from '@/lib/transitions'
 
-export async function getCurrentUser() {
+export type CurrentUser = {
+  id: string
+  email: string
+  name: string
+  role: Role
+  avatar: string | null
+}
+
+export async function getCurrentUser(): Promise<CurrentUser | null> {
   const session = await auth()
   if (!session?.user?.id) {
     return null
@@ -18,7 +27,11 @@ export async function getCurrentUser() {
     },
   })
 
-  return user
+  if (!user) {
+    return null
+  }
+
+  return user as CurrentUser
 }
 
 export async function requireUser() {

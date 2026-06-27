@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/services/auth.service'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db'
+import { requirementService } from '@/services/requirement.service'
 import Link from 'next/link'
 import { StatusBadge } from '@/components/requirement/status-badge'
 import { StatusActions } from '@/components/requirement/status-actions'
@@ -12,21 +12,7 @@ export default async function ReviewQueuePage() {
     redirect('/dashboard')
   }
 
-  const requirements = await db.requirement.findMany({
-    where: { status: 'UNDER_REVIEW' },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      number: true,
-      title: true,
-      priority: true,
-      status: true,
-      createdAt: true,
-      project: { select: { slug: true, name: true } },
-      author: { select: { id: true, name: true } },
-      _count: { select: { votes: true } },
-    },
-  })
+  const requirements = await requirementService.listUnderReview(user.id)
 
   return (
     <div className="space-y-4">
@@ -42,7 +28,7 @@ export default async function ReviewQueuePage() {
           {requirements.map((r) => {
             const targets = getAvailableTransitions(
               r.status as ReqStatus,
-              user.role as never,
+              user.role,
             )
             return (
               <div

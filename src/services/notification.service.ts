@@ -1,7 +1,8 @@
 import { db } from '@/lib/db'
 import { VOTE_MILESTONES } from '@/lib/constants'
 import { notificationChannel } from '@/lib/notifications/channel'
-import type { NotificationType, RequirementStatus } from '@/generated/prisma/client'
+import type { NotificationType } from '@/generated/prisma/client'
+import type { ReqStatus } from '@/lib/transitions'
 
 type NotifyTarget = {
   userId: string
@@ -92,8 +93,8 @@ export function nextVoteMilestone(count: number): number | null {
   return null
 }
 
-export function statusLabel(status: RequirementStatus): string {
-  const labels: Record<RequirementStatus, string> = {
+export function statusLabel(status: ReqStatus): string {
+  const labels: Record<ReqStatus, string> = {
     SUBMITTED: '已提交',
     UNDER_REVIEW: '评审中',
     PLANNED: '已规划',

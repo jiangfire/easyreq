@@ -45,6 +45,17 @@ async function main() {
   })
 
   const submitter1 = await prisma.user.upsert({
+    where: { email: 'submitter@company.dev' },
+    update: {},
+    create: {
+      email: 'submitter@company.dev',
+      name: 'Submitter One',
+      passwordHash,
+      role: 'SUBMITTER',
+    },
+  })
+
+  const submitter2 = await prisma.user.upsert({
     where: { email: 'alice@company.dev' },
     update: {},
     create: {
@@ -55,7 +66,7 @@ async function main() {
     },
   })
 
-  const submitter2 = await prisma.user.upsert({
+  const submitter3 = await prisma.user.upsert({
     where: { email: 'bob@company.dev' },
     update: {},
     create: {
@@ -66,7 +77,7 @@ async function main() {
     },
   })
 
-  console.log(`Created 5 users: ${[admin, manager, developer, submitter1, submitter2].map((u) => u.email).join(', ')}`)
+  console.log(`Created 5 users: ${[admin, manager, developer, submitter1, submitter2, submitter3].map((u) => u.email).join(', ')}`)
 
   // Create projects
   const portalProject = await prisma.project.upsert({
@@ -82,6 +93,7 @@ async function main() {
           { userId: developer.id, role: 'MEMBER' },
           { userId: submitter1.id, role: 'MEMBER' },
           { userId: submitter2.id, role: 'MEMBER' },
+          { userId: submitter3.id, role: 'MEMBER' },
         ],
       },
     },

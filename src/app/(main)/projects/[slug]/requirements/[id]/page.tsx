@@ -1,5 +1,7 @@
 import { getCurrentUser } from '@/services/auth.service'
 import { requirementService } from '@/services/requirement.service'
+import { projectService } from '@/services/project.service'
+import { labelService } from '@/services/label.service'
 import { StatusBadge, PriorityBadge } from '@/components/requirement/status-badge'
 import { StatusTimeline } from '@/components/requirement/status-timeline'
 import { StatusActions } from '@/components/requirement/status-actions'
@@ -8,11 +10,9 @@ import { CommentSection } from '@/components/comment/comment-section'
 import { EditableTitle, EditableBody } from '@/components/requirement/editable-fields'
 import { PRIORITY_CONFIG } from '@/lib/constants'
 import { getAvailableTransitions, type ReqStatus } from '@/lib/transitions'
-import { getAttachmentPublicUrl } from '@/lib/storage'
 import Image from 'next/image'
 import { LabelSelector } from '@/components/requirement/label-selector'
 import { AssigneeSelector } from '@/components/requirement/assignee-selector'
-import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
@@ -34,18 +34,13 @@ export default async function RequirementDetailPage({
 
   const availableTargets = getAvailableTransitions(
     requirement.status as ReqStatus,
-    user.role as never,
+    user.role,
   )
 
-  const members = await db.projectMember.findMany({
-    where: { projectId: requirement.project.id },
-    select: { userId: true, user: { select: { name: true } } },
-  })
-
-  const labels = await db.label.findMany({
-    where: { projectId: requirement.project.id },
-    orderBy: { name: 'asc' },
-  })
+  const [members, labels] = await Promise.all([
+    projectService.listMembers(requirement.project.id, user.id),
+    labelService.list(requirement.project.id),
+  ])
 
   const isManager = user.role === 'MANAGER' || user.role === 'ADMIN'
   const isAuthor = requirement.authorId === user.id
@@ -110,7 +105,7 @@ export default async function RequirementDetailPage({
               <h3 className="mb-3 text-sm font-semibold text-gray-700">附件 ({requirement.attachments.length})</h3>
               <div className="flex flex-wrap gap-3">
                 {requirement.attachments.map((a) => {
-                  const url = getAttachmentPublicUrl(a.storageProvider, a.storageKey)
+                  const url = `/api/attachments/${a.id}`
                   const isImage = a.mimeType.startsWith('image/')
                   return (
                     <a

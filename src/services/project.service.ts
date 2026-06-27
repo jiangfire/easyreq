@@ -132,6 +132,21 @@ export class ProjectService {
     })
   }
 
+  async listMembers(projectId: string, userId: string) {
+    const membership = await db.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+    })
+    if (!membership) {
+      throw new AppError('FORBIDDEN', '你不是该项目成员')
+    }
+
+    return db.projectMember.findMany({
+      where: { projectId },
+      select: { userId: true, user: { select: { id: true, name: true } } },
+      orderBy: { user: { name: 'asc' } },
+    })
+  }
+
   async getDetail(slug: string, userId: string) {
     const project = await db.project.findUnique({
       where: { slug },

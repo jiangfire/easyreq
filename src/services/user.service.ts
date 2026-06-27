@@ -8,6 +8,17 @@ const MIN_PASSWORD_LENGTH = 8
 
 const VALID_ROLES: Role[] = ['SUBMITTER', 'MANAGER', 'DEVELOPER', 'ADMIN']
 
+function isValidRole(role: string): role is Role {
+  return VALID_ROLES.includes(role as Role)
+}
+
+function assertValidRole(role: string): Role {
+  if (!isValidRole(role)) {
+    throw new AppError('VALIDATION_ERROR', '无效的角色')
+  }
+  return role
+}
+
 export class UserService {
   async create(input: {
     email: string
@@ -26,9 +37,7 @@ export class UserService {
       throw new AppError('VALIDATION_ERROR', `密码至少 ${MIN_PASSWORD_LENGTH} 位`)
     }
 
-    if (!VALID_ROLES.includes(input.role as Role)) {
-      throw new AppError('VALIDATION_ERROR', '无效的角色')
-    }
+    const role = assertValidRole(input.role)
 
     const existing = await db.user.findUnique({ where: { email } })
     if (existing) {
@@ -38,19 +47,17 @@ export class UserService {
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST)
 
     return db.user.create({
-      data: { email, name, passwordHash, role: input.role as Role },
+      data: { email, name, passwordHash, role },
       select: { id: true, email: true, name: true, role: true, createdAt: true },
     })
   }
 
   async updateRole(userId: string, role: string) {
-    if (!VALID_ROLES.includes(role as Role)) {
-      throw new AppError('VALIDATION_ERROR', '无效的角色')
-    }
+    const validatedRole = assertValidRole(role)
 
     return db.user.update({
       where: { id: userId },
-      data: { role: role as Role },
+      data: { role: validatedRole },
       select: { id: true, email: true, name: true, role: true },
     })
   }

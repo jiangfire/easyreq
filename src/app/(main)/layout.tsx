@@ -1,5 +1,5 @@
 import { getCurrentUser } from '@/services/auth.service'
-import { db } from '@/lib/db'
+import { projectService } from '@/services/project.service'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { GlobalQuickSubmit } from '@/components/requirement/global-quick-submit'
@@ -12,18 +12,7 @@ export default async function MainLayout({
   const user = await getCurrentUser()
   if (!user) return null
 
-  const projects = await db.project.findMany({
-    where: {
-      members: { some: { userId: user.id } },
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      _count: { select: { requirements: true } },
-    },
-    orderBy: { name: 'asc' },
-  })
+  const projects = await projectService.listForUser(user.id)
 
   return (
     <div className="flex min-h-screen bg-gray-50">

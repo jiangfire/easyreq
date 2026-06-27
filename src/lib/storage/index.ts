@@ -30,12 +30,3 @@ export function createStorageProvider(
   }
 }
 
-export function getAttachmentPublicUrl(
-  storageProvider: 'LOCAL' | 'S3',
-  storageKey: string,
-): string {
-  const provider = createStorageProvider(
-    storageProvider === 'S3' ? 's3' : 'local',
-  )
-  return provider.getPublicUrl(storageKey)
-}

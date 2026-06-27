@@ -87,7 +87,7 @@ export class AttachmentService {
 
     return {
       ...attachment,
-      url: this.storage.getPublicUrl(storageKey),
+      url: `/api/attachments/${attachment.id}`,
     }
   }
 
@@ -119,7 +119,7 @@ export class AttachmentService {
 
     return attachments.map((a) => ({
       ...a,
-      url: this.storage.getPublicUrl(a.storageKey),
+      url: `/api/attachments/${a.id}`,
     }))
   }
 

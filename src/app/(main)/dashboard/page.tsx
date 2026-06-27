@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/services/auth.service'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db'
+import { requirementService } from '@/services/requirement.service'
 import Link from 'next/link'
 import { StatusBadge } from '@/components/requirement/status-badge'
 import { PriorityBadge } from '@/components/requirement/status-badge'
@@ -9,23 +9,7 @@ export default async function DashboardPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
-  const requirements = await db.requirement.findMany({
-    where: {
-      OR: [{ authorId: user.id }, { assigneeId: user.id }],
-    },
-    orderBy: { updatedAt: 'desc' },
-    select: {
-      id: true,
-      number: true,
-      title: true,
-      status: true,
-      priority: true,
-      createdAt: true,
-      updatedAt: true,
-      project: { select: { slug: true, name: true } },
-      _count: { select: { votes: true, comments: { where: { isDeleted: false } } } },
-    },
-  })
+  const requirements = await requirementService.listForUser(user.id)
 
   const grouped = requirements.reduce(
     (acc, r) => {

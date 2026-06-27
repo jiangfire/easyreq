@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
 import type { CreateRequirementInput } from '@/lib/validation/requirement'
+import type { Priority } from '@/generated/prisma/client'
 import {
   notificationService,
   requirementLink,
@@ -131,6 +132,44 @@ export class RequirementService {
     return requirement
   }
 
+  async listUnderReview(_userId: string) {
+    return db.requirement.findMany({
+      where: { status: 'UNDER_REVIEW' },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        priority: true,
+        status: true,
+        createdAt: true,
+        project: { select: { slug: true, name: true } },
+        author: { select: { id: true, name: true } },
+        _count: { select: { votes: true } },
+      },
+    })
+  }
+
+  async listForUser(userId: string) {
+    return db.requirement.findMany({
+      where: {
+        OR: [{ authorId: userId }, { assigneeId: userId }],
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        project: { select: { slug: true, name: true } },
+        _count: { select: { votes: true, comments: { where: { isDeleted: false } } } },
+      },
+    })
+  }
+
   async list(
     projectId: string,
     userId: string,
@@ -156,15 +195,17 @@ export class RequirementService {
     const pageSize = options.pageSize ?? 25
     const sortBy = options.sortBy ?? 'createdAt'
 
-    const orderBy =
+    const orderBy: { createdAt: 'desc' } | { updatedAt: 'desc' } | { votes: { _count: 'desc' } } =
       sortBy === 'votes'
         ? { votes: { _count: 'desc' as const } }
-        : { [sortBy]: 'desc' as const }
+        : sortBy === 'updatedAt'
+          ? { updatedAt: 'desc' as const }
+          : { createdAt: 'desc' as const }
 
     const where = {
       projectId,
-      ...(options.status ? { status: { in: options.status as never[] } } : {}),
-      ...(options.priority ? { priority: { in: options.priority as never[] } } : {}),
+      ...(options.status ? { status: { in: options.status as ReqStatus[] } } : {}),
+      ...(options.priority ? { priority: { in: options.priority as Priority[] } } : {}),
       ...(options.assigneeId ? { assigneeId: options.assigneeId } : {}),
       ...(options.labelIds && options.labelIds.length > 0
         ? { labels: { some: { labelId: { in: options.labelIds } } } }
@@ -189,8 +230,7 @@ export class RequirementService {
             select: { comments: { where: { isDeleted: false } }, votes: true },
           },
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        orderBy: orderBy as any,
+        orderBy,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -321,7 +361,7 @@ export class RequirementService {
   async transition(
     id: string,
     operatorId: string,
-    operatorRole: string,
+    operatorRole: Role,
     toStatus: ReqStatus,
     note?: string,
   ) {
@@ -351,7 +391,7 @@ export class RequirementService {
       )
     }
 
-    if (!hasTransitionPermission(fromStatus, toStatus, operatorRole as Role)) {
+    if (!hasTransitionPermission(fromStatus, toStatus, operatorRole)) {
       throw new AppError('FORBIDDEN', '你没有执行此操作权限')
     }
 
@@ -418,8 +458,8 @@ export class RequirementService {
       status: string
       project: { slug: string }
     },
-    fromStatus: string,
-    toStatus: string,
+    fromStatus: ReqStatus,
+    toStatus: ReqStatus,
     operatorId: string,
   ) {
     // Spec: STATUS_CHANGE recipients = author + assignee only
@@ -433,7 +473,7 @@ export class RequirementService {
         userId: requirement.authorId,
         type: 'STATUS_CHANGE' as const,
         title: `需求 #${requirement.number} 状态变更`,
-        body: `${statusLabel(fromStatus as never)} → ${statusLabel(toStatus as never)}：${requirement.title}`,
+        body: `${statusLabel(fromStatus)} → ${statusLabel(toStatus)}：${requirement.title}`,
         link,
       })
     }
@@ -444,7 +484,7 @@ export class RequirementService {
         userId: requirement.assigneeId,
         type: 'STATUS_CHANGE' as const,
         title: `指派给你的需求 #${requirement.number} 状态变更`,
-        body: `${statusLabel(fromStatus as never)} → ${statusLabel(toStatus as never)}`,
+        body: `${statusLabel(fromStatus)} → ${statusLabel(toStatus)}`,
         link,
       })
     }

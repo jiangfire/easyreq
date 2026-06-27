@@ -4,7 +4,6 @@ import { requirementService } from '@/services/requirement.service'
 import { labelService } from '@/services/label.service'
 import { RequirementList } from '@/components/requirement/requirement-list'
 import { QuickSubmit } from '@/components/requirement/quick-submit'
-import { db } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 
@@ -47,11 +46,7 @@ export default async function ProjectDetailPage({
       pageSize: 25,
     }),
     labelService.list(project.id),
-    db.projectMember.findMany({
-      where: { projectId: project.id },
-      include: { user: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'asc' },
-    }),
+    projectService.listMembers(project.id, user.id),
   ])
 
   return (

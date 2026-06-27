@@ -41,7 +41,7 @@ test('developer cannot accept deliverables', async ({ page }) => {
 test('manager can access admin review queue', async ({ page }) => {
   await login(page, 'manager@easyreq.dev', 'password123')
   await page.goto('/admin/review')
-  await expect(page.locator('h1')).toContainText('评审队列')
+  await expect(page.getByRole('heading', { name: '评审队列' })).toBeVisible()
 })
 
 test('submitter is redirected from admin', async ({ page }) => {

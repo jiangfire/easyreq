@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/services/auth.service'
-import { db } from '@/lib/db'
+import { userService } from '@/services/user.service'
 import { z } from 'zod'
 import { AppError } from '@/lib/errors'
 
@@ -28,11 +28,7 @@ export async function PATCH(
   }
 
   try {
-    const updated = await db.user.update({
-      where: { id },
-      data: { role: result.data.role },
-      select: { id: true, email: true, name: true, role: true },
-    })
+    const updated = await userService.updateRole(id, result.data.role)
 
     return NextResponse.json(updated)
   } catch (error) {

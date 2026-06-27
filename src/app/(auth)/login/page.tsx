@@ -12,10 +12,13 @@ export default async function LoginPage({
   async function loginAction(formData: FormData) {
     'use server'
     try {
-      await signIn('credentials', formData, { redirectTo: '/' })
+      await signIn('credentials', {
+        email: formData.get('email') as string,
+        password: formData.get('password') as string,
+        redirectTo: callbackUrl ?? '/projects',
+      })
     } catch (error) {
       if (error instanceof AuthError) {
-        const callbackUrl = formData.get('callbackUrl') as string
         const url = new URL('/login', process.env.NEXTAUTH_URL ?? 'http://localhost:3000')
         if (callbackUrl) url.searchParams.set('callbackUrl', callbackUrl)
         url.searchParams.set('error', 'invalid_credentials')

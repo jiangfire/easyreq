@@ -44,6 +44,7 @@ export function StatusActions({
       setShowNote(false)
       setNote('')
       setSelectedTarget(null)
+      setLoading(null)
       router.refresh()
     } catch {
       setError('网络错误')
