@@ -60,6 +60,9 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
+      # The vitest config derives a `<db>_test` DSN from DATABASE_URL, so we
+      # also need to create that database and migrate it.
+      DATABASE_TEST_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb_test
       NEXTAUTH_SECRET: ci-secret-do-not-use-in-prod
       NEXTAUTH_URL: http://localhost:3000
       STORAGE_PROVIDER: local
@@ -72,7 +75,20 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx prisma generate
-      - run: npx prisma migrate deploy
+      - name: Create the test database
+        # `vitest.config.ts` derives a `<db>_test` DSN from DATABASE_URL, so
+        # we have to provision that database before tests run. Use a small
+        # node script with the pg client (already a dependency) to run the
+        # CREATE DATABASE against the main DB; CREATE DATABASE cannot run
+        # inside a transaction block.
+        env:
+          DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
+        run: |
+          node -e "const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();await c.query('CREATE DATABASE easyreqdb_test');await c.end();})().catch(e=>{if(e.code==='42P04')process.exit(0);console.error(e);process.exit(1)})"
+      - name: Run migrations
+        run: |
+          npx prisma migrate deploy
+          DATABASE_URL=$DATABASE_TEST_URL npx prisma migrate deploy
       - run: npm test
 
   test-s3:
@@ -111,6 +127,7 @@ jobs:
         command: server /data --address ":9000" --console-address ":9001"
     env:
       DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
+      DATABASE_TEST_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb_test
       NEXTAUTH_SECRET: ci-secret-do-not-use-in-prod
       NEXTAUTH_URL: http://localhost:3000
       STORAGE_PROVIDER: s3
@@ -128,7 +145,18 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx prisma generate
-      - run: npx prisma migrate deploy
+      - name: Create the test database
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: easyreq
+          PGPASSWORD: easyreq
+        run: |
+          psql -v ON_ERROR_STOP=1 -d easyreqdb -c "CREATE DATABASE easyreqdb_test;"
+      - name: Run migrations
+        run: |
+          npx prisma migrate deploy
+          DATABASE_URL=$DATABASE_TEST_URL npx prisma migrate deploy
       - name: Wait for MinIO
         run: |
           for i in $(seq 1 30); do
