@@ -242,5 +242,3 @@ export function createNotificationChannel(): INotificationChannel {
 }
 
 export const notificationChannel = createNotificationChannel()
-
-export const __test__ = { EventEmitterChannel, RedisChannel }

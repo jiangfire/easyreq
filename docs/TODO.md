@@ -190,3 +190,14 @@
   - 单元/集成：187 个用例通过（`npm run test`），含 23 AI 单元 / 4 AI 集成 / 8 通知 / 14 stats / 11 search / 11 kanban
   - E2E：11 个用例通过（`npx playwright test`）
   - S3（MinIO 集成）：3 个用例通过（`npm run test:s3`）
+2026-07 完成度：
+- P0-2: ✅ S3 / E2E（之前已完）
+- P1-3: ✅ AI / 通知 / 统计
+- P2-4: ✅ 看板 / 搜索 / 附件 / 移动
+- P3-1: ✅ Redis pub/sub 跨实例 SSE（`RedisChannel` + `EventEmitterChannel` 双实现，`REDIS_URL` 切换）
+- P3-2: ✅ 字段级编辑审计（`AuditLog` 模型 + `writeAuditDiff` hook + 测试）
+- 剩余：
+  - P3-3: 公开注册 / OAuth — 当前设计不开放注册，需按需启用
+  - 运维: 慢查询监控 / 错误上报 / Dockerfile
+
+测试统计：190 单元/集成 ✅  + 11 E2E ✅ + 3 S3（MinIO）✅ = 204 总计
