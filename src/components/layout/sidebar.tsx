@@ -11,11 +11,19 @@ type ProjectItem = {
   _count: { requirements: number }
 }
 
-export function Sidebar({ projects }: { projects: ProjectItem[] }) {
+export function Sidebar({
+  projects,
+  role,
+}: {
+  projects: ProjectItem[]
+  role: string
+}) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
+  const isManager = role === 'MANAGER' || role === 'ADMIN'
+  const isInternal = role === 'MANAGER' || role === 'ADMIN' || role === 'DEVELOPER'
 
   return (
     <>
@@ -50,12 +58,14 @@ export function Sidebar({ projects }: { projects: ProjectItem[] }) {
 
           {/* Main nav */}
           <div className="space-y-1">
-            <SidebarLink href="/projects" active={isActive('/projects')} onClick={() => setMobileOpen(false)}>
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              项目列表
-            </SidebarLink>
+            {isInternal && (
+              <SidebarLink href="/projects" active={isActive('/projects')} onClick={() => setMobileOpen(false)}>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                项目列表
+              </SidebarLink>
+            )}
             <SidebarLink href="/dashboard" active={isActive('/dashboard')} onClick={() => setMobileOpen(false)}>
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -68,34 +78,44 @@ export function Sidebar({ projects }: { projects: ProjectItem[] }) {
               </svg>
               通知
             </SidebarLink>
+            {isManager && (
+              <SidebarLink href="/requirements/inbox" active={isActive('/requirements/inbox')} onClick={() => setMobileOpen(false)}>
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+                需求池
+              </SidebarLink>
+            )}
           </div>
 
           {/* Projects */}
-          <div className="mt-6 flex-1">
-            <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              项目
-            </h3>
-            <div className="space-y-1">
-              {projects.length === 0 ? (
-                <p className="px-2 text-sm text-gray-400">暂无项目</p>
-              ) : (
-                projects.map((p) => (
-                  <SidebarLink
-                    key={p.id}
-                    href={`/projects/${p.slug}`}
-                    active={isActive(`/projects/${p.slug}`)}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    <span className="flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-600">
-                      {p.name.charAt(0)}
-                    </span>
-                    <span className="flex-1 truncate">{p.name}</span>
-                    <span className="text-xs text-gray-400">{p._count.requirements}</span>
-                  </SidebarLink>
-                ))
-              )}
+          {isInternal && (
+            <div className="mt-6 flex-1">
+              <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                项目
+              </h3>
+              <div className="space-y-1">
+                {projects.length === 0 ? (
+                  <p className="px-2 text-sm text-gray-400">暂无项目</p>
+                ) : (
+                  projects.map((p) => (
+                    <SidebarLink
+                      key={p.id}
+                      href={`/projects/${p.slug}`}
+                      active={isActive(`/projects/${p.slug}`)}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <span className="flex h-5 w-5 items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-600">
+                        {p.name.charAt(0)}
+                      </span>
+                      <span className="flex-1 truncate">{p.name}</span>
+                      <span className="text-xs text-gray-400">{p._count.requirements}</span>
+                    </SidebarLink>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </nav>
       </aside>
     </>

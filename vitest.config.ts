@@ -30,5 +30,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx', 'tests/integration/**/*.test.ts'],
+    // Integration tests share a database; running files in parallel causes
+    // cross-test interference. Serialize them.
+    fileParallelism: false,
   },
 })

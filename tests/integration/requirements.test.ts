@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 import { requirementService } from '@/services/requirement.service'
@@ -33,6 +33,7 @@ async function cleanDatabase() {
     db.requirementLabel.deleteMany(),
     db.label.deleteMany(),
     db.requirement.deleteMany(),
+    db.globalCounter.deleteMany(),
     db.projectMember.deleteMany(),
     db.project.deleteMany(),
     db.user.deleteMany(),
@@ -61,6 +62,10 @@ describe('Requirement Service Integration', () => {
     managerId = manager.id
     developerId = developer.id
     submitterId = submitter.id
+
+    await db.globalCounter.create({
+      data: { name: 'requirement', value: 0 },
+    })
 
     const project = await projectService.create(
       {
@@ -421,5 +426,150 @@ describe('Requirement Service Integration', () => {
     // manager + admin (managers) MUST be notified
     expect(notifiedIds.has(managerId)).toBe(true)
     expect(notifiedIds.has(adminId)).toBe(true)
+  })
+
+  it('creates unassigned requirements with globalNumber', async () => {
+    const req1 = await requirementService.createUnassigned(submitterId, { title: 'Unassigned 1' })
+    const req2 = await requirementService.createUnassigned(submitterId, { title: 'Unassigned 2' })
+
+    expect(req1.projectId).toBeNull()
+    expect(req1.number).toBeNull()
+    expect(req1.globalNumber).toBeGreaterThan(0)
+    expect(req2.globalNumber).toBe(req1.globalNumber + 1)
+  })
+
+  it('allows submitter to view their own unassigned requirement', async () => {
+    const req = await requirementService.createUnassigned(submitterId, { title: 'My unassigned' })
+    const found = await requirementService.getById(req.id, submitterId)
+    expect(found.id).toBe(req.id)
+  })
+
+  it('forbids other submitters from viewing unassigned requirements', async () => {
+    const other = await db.user.create({
+      data: { email: 'other-submitter@test.dev', name: 'Other', passwordHash: 'x', role: 'SUBMITTER' },
+    })
+    const req = await requirementService.createUnassigned(submitterId, { title: 'Private' })
+
+    await expect(requirementService.getById(req.id, other.id)).rejects.toBeInstanceOf(AppError)
+  })
+
+  it('restricts unassigned requirement transitions to SUBMITTED/REJECTED', async () => {
+    const req = await requirementService.createUnassigned(submitterId, { title: 'Transition test' })
+
+    // Manager can reject
+    await requirementService.transition(req.id, managerId, 'MANAGER', 'REJECTED')
+
+    // Submitter can resubmit
+    await requirementService.transition(req.id, submitterId, 'SUBMITTER', 'SUBMITTED')
+
+    // Manager cannot move to UNDER_REVIEW before assignment
+    await expect(
+      requirementService.transition(req.id, managerId, 'MANAGER', 'UNDER_REVIEW'),
+    ).rejects.toBeInstanceOf(AppError)
+  })
+
+  it('assigns unassigned requirement to a project', async () => {
+    const req = await requirementService.createUnassigned(submitterId, { title: 'Assign me' })
+
+    const updated = await requirementService.assignToProject(req.id, projectId, managerId, 'MANAGER')
+
+    expect(updated.projectId).toBe(projectId)
+    expect(updated.number).not.toBeNull()
+    expect(updated.globalNumber).toBe(req.globalNumber)
+
+    const project = await db.project.findUnique({ where: { id: projectId } })
+    expect(project?.lastRequirementNumber).toBeGreaterThanOrEqual(updated.number ?? 0)
+  })
+
+  it('creates a project with assigned requirements', async () => {
+    const req = await requirementService.createUnassigned(submitterId, { title: 'Batch assign' })
+
+    const project = await projectService.create(
+      { name: 'Batch Project', slug: `batch-${Date.now()}`, description: 'test' },
+      managerId,
+      [req.id],
+    )
+
+    const updated = await db.requirement.findUnique({ where: { id: req.id } })
+    expect(updated?.projectId).toBe(project.id)
+    expect(updated?.number).toBe(1)
+  })
+
+  describe('AI hooks (NullAIProvider by default → no behavior change)', () => {
+    it('honors an explicit user-chosen priority even when AI would suggest something else', async () => {
+      // The NullAIProvider returns MEDIUM for everything; the user picked HIGH
+      // explicitly, so the requirement's stored priority should be HIGH.
+      const req = await requirementService.create(projectId, submitterId, {
+        title: 'Critical outage in checkout',
+        priority: 'HIGH',
+      })
+      expect(req.priority).toBe('HIGH')
+    })
+
+    it('defaults to MEDIUM when neither AI nor user picked a priority', async () => {
+      const req = await requirementService.createUnassigned(submitterId, {
+        title: 'Add a delete button',
+      })
+      expect(req.priority).toBe('MEDIUM')
+    })
+  })
+
+  describe('AI hooks (heuristic provider → behavior change)', () => {
+    let localRequirementService: typeof import('@/services/requirement.service').requirementService
+
+    beforeEach(async () => {
+      // Swap to the heuristic provider for this block. We mock the AI module
+      // before importing the requirement service so the service picks up the
+      // mock at module load time.
+      vi.resetModules()
+      vi.doMock('@/lib/ai', async () => {
+        const actual = await vi.importActual<typeof import('@/lib/ai')>('@/lib/ai')
+        const { HeuristicAIProvider } = await vi.importActual<typeof import('@/lib/ai/heuristic-provider')>(
+          '@/lib/ai/heuristic-provider',
+        )
+        return {
+          ...actual,
+          aiProvider: new HeuristicAIProvider(),
+        }
+      })
+      const mod = await import('@/services/requirement.service')
+      localRequirementService = mod.requirementService
+    })
+
+    afterEach(() => {
+      vi.doUnmock('@/lib/ai')
+    })
+
+    it('overrides a missing priority with the heuristic suggestion', async () => {
+      const req = await localRequirementService.create(projectId, submitterId, {
+        title: 'Production 宕机 emergency fix',
+      })
+      expect(req.priority).toBe('CRITICAL')
+    })
+
+    it('notifies the author when a near-duplicate is detected', async () => {
+      const flush = () => new Promise((r) => setTimeout(r, 150))
+
+      const first = await localRequirementService.create(projectId, submitterId, {
+        title: '修复登录页面无法访问',
+        body: '用户在登录页面卡住',
+      })
+      // "登录" → HIGH; "无法使用" doesn't appear in this title, so CRITICAL doesn't match.
+      expect(first.priority).toBe('HIGH')
+      await flush()
+
+      await db.notification.deleteMany({ where: { userId: submitterId } })
+
+      await localRequirementService.create(projectId, submitterId, {
+        title: '修复登录页面无法访问',
+        body: '用户在登录页面卡住',
+      })
+      await flush()
+
+      const notifications = await db.notification.findMany({
+        where: { userId: submitterId, title: '可能与历史需求重复' },
+      })
+      expect(notifications.length).toBe(1)
+    })
   })
 })

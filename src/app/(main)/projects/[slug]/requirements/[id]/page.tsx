@@ -8,11 +8,11 @@ import { StatusActions } from '@/components/requirement/status-actions'
 import { VoteButton } from '@/components/requirement/vote-button'
 import { CommentSection } from '@/components/comment/comment-section'
 import { EditableTitle, EditableBody, EditablePriority, EditableExpectedDate, EditableAcceptanceCriteria } from '@/components/requirement/editable-fields'
+import { AttachmentPreview } from '@/components/attachment/attachment-preview'
 import { getAvailableTransitions, type ReqStatus } from '@/lib/transitions'
-import Image from 'next/image'
 import { LabelSelector } from '@/components/requirement/label-selector'
 import { AssigneeSelector } from '@/components/requirement/assignee-selector'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 
 export default async function RequirementDetailPage({
@@ -31,6 +31,10 @@ export default async function RequirementDetailPage({
     notFound()
   }
 
+  if (!requirement.project) {
+    redirect(`/requirements/${id}`)
+  }
+
   const availableTargets = getAvailableTransitions(
     requirement.status as ReqStatus,
     user.role,
@@ -41,6 +45,7 @@ export default async function RequirementDetailPage({
     labelService.list(requirement.project.id),
   ])
 
+  const displayNumber = requirement.number ?? requirement.globalNumber
   const isManager = user.role === 'MANAGER' || user.role === 'ADMIN'
   const isAuthor = requirement.authorId === user.id
 
@@ -52,7 +57,7 @@ export default async function RequirementDetailPage({
           {requirement.project.slug}
         </Link>
         <span>/</span>
-        <span>#{requirement.number}</span>
+        <span>#{displayNumber}</span>
       </div>
 
       <div className="flex gap-6">
@@ -61,7 +66,7 @@ export default async function RequirementDetailPage({
           {/* Header */}
           <div className="mb-6 border-b border-gray-200 pb-4">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-lg font-bold text-gray-400">#{requirement.number}</span>
+              <span className="text-lg font-bold text-gray-400">#{displayNumber}</span>
               <StatusBadge status={requirement.status} />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">
@@ -103,37 +108,15 @@ export default async function RequirementDetailPage({
             <div className="mb-6 rounded-md border border-gray-200 bg-gray-50 p-4">
               <h3 className="mb-3 text-sm font-semibold text-gray-700">附件 ({requirement.attachments.length})</h3>
               <div className="flex flex-wrap gap-3">
-                {requirement.attachments.map((a) => {
-                  const url = `/api/attachments/${a.id}`
-                  const isImage = a.mimeType.startsWith('image/')
-                  return (
-                    <a
-                      key={a.id}
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex max-w-[200px] flex-col overflow-hidden rounded-md border border-gray-200 bg-white hover:border-blue-300"
-                    >
-                      {isImage ? (
-                        <Image
-                          src={url}
-                          alt={a.fileName}
-                          width={200}
-                          height={96}
-                          unoptimized
-                          className="h-24 w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-24 w-full items-center justify-center bg-gray-100">
-                          <span className="text-2xl">📄</span>
-                        </div>
-                      )}
-                      <div className="truncate px-2 py-1.5 text-xs text-gray-700">
-                        {a.fileName}
-                      </div>
-                    </a>
-                  )
-                })}
+                {requirement.attachments.map((a) => (
+                  <AttachmentPreview
+                    key={a.id}
+                    url={`/api/attachments/${a.id}`}
+                    fileName={a.fileName}
+                    mimeType={a.mimeType}
+                    size={a.fileSize}
+                  />
+                ))}
               </div>
             </div>
           )}

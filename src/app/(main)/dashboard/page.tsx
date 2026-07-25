@@ -21,13 +21,14 @@ export default async function DashboardPage() {
       string,
       Array<{
         id: string
-        number: number
+        globalNumber: number
+        number: number | null
         title: string
         status: string
         priority: string
         createdAt: Date
         updatedAt: Date
-        project: { slug: string; name: string }
+        project: { slug: string; name: string } | null
         _count: { votes: number; comments: number }
       }>
     >,
@@ -42,10 +43,10 @@ export default async function DashboardPage() {
 
       {requirements.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
-          <p className="text-sm text-gray-400">暂无相关需求</p>
-          <Link href="/projects" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
-            浏览项目
-          </Link>
+          <p className="text-sm text-gray-400">还没有需求</p>
+          <p className="mt-2 text-xs text-gray-400">
+            点击右下角的 <span className="font-medium text-blue-600">+</span> 按钮或按 <kbd className="rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 text-xs">N</kbd> 键提交第一个需求
+          </p>
         </div>
       ) : (
         Object.entries(grouped).map(([status, items]) => (
@@ -58,16 +59,17 @@ export default async function DashboardPage() {
               {items.map((r) => (
                 <Link
                   key={r.id}
-                  href={`/projects/${r.project.slug}/requirements/${r.id}`}
+                  href={r.project ? `/projects/${r.project.slug}/requirements/${r.id}` : `/requirements/${r.id}`}
                   className="block rounded-lg border border-gray-200 bg-white p-3 hover:border-blue-300"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-gray-900">
-                        #{r.number} {r.title}
+                        #{r.globalNumber} {r.title}
                       </p>
                       <p className="mt-0.5 text-xs text-gray-500">
-                        {r.project.name} · {new Date(r.updatedAt).toLocaleDateString('zh-CN')} 更新
+                        {r.project ? `${r.project.name} · ` : ''}
+                        {new Date(r.updatedAt).toLocaleDateString('zh-CN')} 更新
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

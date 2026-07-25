@@ -3,6 +3,8 @@ import type {
   AIRequirementInput,
   AIRequirementOutput,
   AIPriority,
+  AIRequirementCandidate,
+  AIDedupHit,
 } from './types'
 
 export class NullAIProvider implements AIProvider {
@@ -15,8 +17,8 @@ export class NullAIProvider implements AIProvider {
 
   async deduplicate(
     _input: AIRequirementInput,
-    candidates: AIRequirementInput[],
-  ): Promise<Array<{ candidate: AIRequirementInput; score: number }>> {
+    candidates: AIRequirementCandidate[],
+  ): Promise<AIDedupHit[]> {
     return candidates.map((candidate) => ({ candidate, score: 0 }))
   }
 

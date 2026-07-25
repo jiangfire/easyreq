@@ -46,11 +46,20 @@ export class NotificationService {
 
   async list(
     userId: string,
-    options: { unreadOnly?: boolean; page?: number; pageSize?: number } = {},
+    options: {
+      unreadOnly?: boolean
+      page?: number
+      pageSize?: number
+      types?: NotificationType[]
+    } = {},
   ) {
     const page = options.page ?? 1
     const pageSize = options.pageSize ?? 25
-    const where = { userId, ...(options.unreadOnly ? { isRead: false } : {}) }
+    const where = {
+      userId,
+      ...(options.unreadOnly ? { isRead: false } : {}),
+      ...(options.types && options.types.length > 0 ? { type: { in: options.types } } : {}),
+    }
     const [items, total] = await Promise.all([
       db.notification.findMany({
         where,
@@ -71,10 +80,33 @@ export class NotificationService {
     }
   }
 
-  async markOneRead(userId: string, notificationId: string) {
+  /**
+   * Mark a notification as read. Idempotent — calling on an already-read
+   * notification is a no-op. Used by the click-to-navigate flow so users
+   * don't have to remember to mark things read manually.
+   */
+  async markRead(userId: string, notificationId: string) {
     return db.notification.updateMany({
-      where: { id: notificationId, userId },
+      where: { id: notificationId, userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
+    })
+  }
+
+  /**
+   * Delete notifications matching a filter. Used by the bulk-delete UI.
+   *  - mode='all' deletes everything for the user
+   *  - mode='read' deletes only read notifications (default for the
+   *    "clear read" button)
+   */
+  async deleteMany(
+    userId: string,
+    options: { mode: 'all' | 'read' } = { mode: 'read' },
+  ) {
+    return db.notification.deleteMany({
+      where: {
+        userId,
+        ...(options.mode === 'read' ? { isRead: true } : {}),
+      },
     })
   }
 

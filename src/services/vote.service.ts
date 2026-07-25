@@ -6,6 +6,7 @@ import {
   notificationService,
   requirementLink,
 } from '@/services/notification.service'
+import { requireRequirementAccess } from '@/services/requirement-access'
 
 export class VoteService {
   async toggle(requirementId: string, userId: string) {
@@ -13,6 +14,7 @@ export class VoteService {
       where: { id: requirementId },
       select: {
         projectId: true,
+        globalNumber: true,
         number: true,
         title: true,
         authorId: true,
@@ -23,14 +25,7 @@ export class VoteService {
       throw new AppError('NOT_FOUND', '需求不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(requirement, userId, { unassignedMode: 'any-authenticated' })
 
     // Run the entire read-toggle-count-milestone inside one transaction so
     // concurrent toggles can't produce P2002/P2025 errors or miscount at
@@ -100,35 +95,51 @@ export class VoteService {
   private async notifyMilestone(
     requirementId: string,
     requirement: {
-      projectId: string
-      number: number
+      projectId: string | null
+      globalNumber: number
+      number: number | null
       title: string
       authorId: string
-      project: { slug: string }
+      project: { slug: string } | null
     },
     milestone: number,
     count: number,
   ) {
-    const managers = await db.projectMember.findMany({
-      where: {
-        projectId: requirement.projectId,
-        user: { role: { in: ['MANAGER', 'ADMIN'] } },
-      },
-      select: { userId: true },
-    })
+    let managers: { userId: string }[]
+
+    if (requirement.projectId) {
+      managers = await db.projectMember.findMany({
+        where: {
+          projectId: requirement.projectId,
+          user: { role: { in: ['MANAGER', 'ADMIN'] } },
+        },
+        select: { userId: true },
+      })
+    } else {
+      const users = await db.user.findMany({
+        where: { role: { in: ['MANAGER', 'ADMIN'] } },
+        select: { id: true },
+      })
+      managers = users.map((u) => ({ userId: u.id }))
+    }
 
     const notified = new Set<string>()
     const targets = []
+    const link = requirement.project
+      ? requirementLink(requirement.project.slug, requirement.number ?? requirement.globalNumber)
+      : `/requirements/${requirementId}`
+    const displayNumber = requirement.number ?? requirement.globalNumber
 
     for (const m of managers) {
-      if (!notified.has(m.userId)) {
-        notified.add(m.userId)
+      const userId = m.userId
+      if (!notified.has(userId)) {
+        notified.add(userId)
         targets.push({
-          userId: m.userId,
+          userId,
           type: 'VOTE_MILESTONE' as const,
-          title: `需求 #${requirement.number} 达到 ${milestone} 票`,
+          title: `需求 #${displayNumber} 达到 ${milestone} 票`,
           body: `${requirement.title} 当前共 ${count} 票`,
-          link: requirementLink(requirement.project.slug, requirement.number),
+          link,
         })
       }
     }

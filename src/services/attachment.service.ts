@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { AppError } from '@/lib/errors'
 import { createStorageProvider } from '@/lib/storage'
 import type { StorageProvider } from '@/lib/storage/types'
+import { requireRequirementAccess } from '@/services/requirement-access'
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -34,20 +35,13 @@ export class AttachmentService {
   ) {
     const requirement = await db.requirement.findUnique({
       where: { id: requirementId },
-      select: { projectId: true },
+      select: { projectId: true, authorId: true },
     })
     if (!requirement) {
       throw new AppError('NOT_FOUND', '需求不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId: uploaderId, projectId: requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(requirement, uploaderId)
 
     if (file.size > MAX_FILE_SIZE) {
       throw new AppError('VALIDATION_ERROR', '文件大小超过 10MB 限制')
@@ -92,20 +86,13 @@ export class AttachmentService {
   async list(requirementId: string, userId: string) {
     const requirement = await db.requirement.findUnique({
       where: { id: requirementId },
-      select: { projectId: true },
+      select: { projectId: true, authorId: true },
     })
     if (!requirement) {
       throw new AppError('NOT_FOUND', '需求不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(requirement, userId)
 
     const attachments = await db.attachment.findMany({
       where: { requirementId },
@@ -124,20 +111,13 @@ export class AttachmentService {
   async delete(attachmentId: string, userId: string, userRole: string) {
     const attachment = await db.attachment.findUnique({
       where: { id: attachmentId },
-      include: { requirement: { select: { projectId: true } } },
+      include: { requirement: { select: { projectId: true, authorId: true } } },
     })
     if (!attachment) {
       throw new AppError('NOT_FOUND', '附件不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: attachment.requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(attachment.requirement, userId)
 
     const isAuthor = attachment.uploaderId === userId
     const isManager = userRole === 'MANAGER' || userRole === 'ADMIN'
@@ -163,20 +143,13 @@ export class AttachmentService {
   async getById(attachmentId: string, userId: string) {
     const attachment = await db.attachment.findUnique({
       where: { id: attachmentId },
-      include: { requirement: { select: { projectId: true } } },
+      include: { requirement: { select: { projectId: true, authorId: true } } },
     })
     if (!attachment) {
       throw new AppError('NOT_FOUND', '附件不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: attachment.requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(attachment.requirement, userId)
 
     return attachment
   }

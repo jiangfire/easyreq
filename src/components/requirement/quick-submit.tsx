@@ -2,7 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { buildCreatePayload, readErrorMessage } from '@/lib/requirement-form'
 
+/**
+ * Inline one-line submit input for project pages.
+ * For the full form, see /projects/[slug]/requirements/new.
+ */
 export function QuickSubmit({ projectSlug }: { projectSlug: string }) {
   const router = useRouter()
   const [title, setTitle] = useState('')
@@ -20,12 +25,11 @@ export function QuickSubmit({ projectSlug }: { projectSlug: string }) {
       const res = await fetch(`/api/projects/${projectSlug}/requirements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: trimmed }),
+        body: JSON.stringify(buildCreatePayload({ title: trimmed, body: '', priority: 'MEDIUM', expectedDate: '', acceptanceCriteria: '' })),
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        setError(data?.error?.message ?? '提交失败')
+        setError(readErrorMessage(await res.json().catch(() => null), '提交失败'))
         setLoading(false)
         return
       }

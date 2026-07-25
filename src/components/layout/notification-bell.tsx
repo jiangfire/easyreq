@@ -117,7 +117,16 @@ function NotificationItem({ notification }: { notification: SSENotification }) {
 
   if (notification.link) {
     return (
-      <Link href={notification.link} className="block hover:bg-gray-50">
+      <Link
+        href={notification.link}
+        className="block hover:bg-gray-50"
+        onClick={() => {
+          // Fire-and-forget mark-read so the bell badge updates without a round-trip
+          void fetch(`/api/notifications/${notification.id}/read`, { method: 'PATCH' }).catch(
+            () => undefined,
+          )
+        }}
+      >
         {content}
       </Link>
     )

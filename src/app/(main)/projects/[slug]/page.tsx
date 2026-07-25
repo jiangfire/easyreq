@@ -78,7 +78,17 @@ export default async function ProjectDetailPage({
           <span>/</span>
           <span className="text-gray-700">{project.name}</span>
         </div>
-        <h1 className="mt-2 text-xl font-semibold text-gray-900">{project.name}</h1>
+        <div className="mt-1 flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-gray-900">{project.name}</h1>
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              href={`/projects/${slug}/board`}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-gray-700 hover:bg-gray-50"
+            >
+              看板
+            </Link>
+          </div>
+        </div>
         {project.description && <p className="mt-1 text-sm text-gray-500">{project.description}</p>}
       </div>
 

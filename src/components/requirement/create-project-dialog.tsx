@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createProjectSchema } from '@/lib/validation/project'
 
@@ -9,6 +9,17 @@ export function CreateProjectDialog() {
   const [open, setOpen] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [unassigned, setUnassigned] = useState<{ id: string; globalNumber: number; title: string }[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/requirements/inbox')
+      .then((res) => res.json())
+      .then((data) => {
+        setUnassigned(Array.isArray(data) ? data : [])
+      })
+  }, [open])
 
   async function handleSubmit(formData: FormData) {
     setLoading(true)
@@ -18,6 +29,7 @@ export function CreateProjectDialog() {
       name: formData.get('name') as string,
       slug: formData.get('slug') as string,
       description: (formData.get('description') as string) || undefined,
+      requirementIds: selectedIds.length > 0 ? selectedIds : undefined,
     }
 
     const result = createProjectSchema.safeParse(input)
@@ -52,12 +64,19 @@ export function CreateProjectDialog() {
 
       const project = await res.json()
       setOpen(false)
+      setSelectedIds([])
       router.push(`/projects/${project.slug}`)
       router.refresh()
     } catch {
       setErrors({ name: '网络错误，请重试' })
       setLoading(false)
     }
+  }
+
+  function toggleRequirement(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
   }
 
   return (
@@ -110,6 +129,32 @@ export function CreateProjectDialog() {
                 />
                 {errors.description && <p className="mt-1 text-xs text-red-600">{errors.description}</p>}
               </div>
+
+              {unassigned.length > 0 && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    归集需求（可选）
+                  </label>
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-gray-300 p-2">
+                    {unassigned.map((r) => (
+                      <label
+                        key={r.id}
+                        className="flex items-start gap-2 p-1 text-sm hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(r.id)}
+                          onChange={() => toggleRequirement(r.id)}
+                          className="mt-1"
+                        />
+                        <span className="text-gray-700">
+                          #{r.globalNumber} {r.title}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <button

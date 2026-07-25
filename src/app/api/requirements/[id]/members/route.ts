@@ -17,6 +17,10 @@ export async function GET(
 
   try {
     const requirement = await requirementService.getById(id, user.id)
+    if (!requirement.project) {
+      return NextResponse.json([])
+    }
+
     const members = await db.projectMember.findMany({
       where: { projectId: requirement.project.id },
       include: { user: { select: { id: true, name: true, email: true } } },

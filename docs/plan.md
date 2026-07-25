@@ -41,14 +41,14 @@
 
 #### Task 1: 项目脚手架 + 基础配置
 
-**Description:** 初始化 Next.js 15 项目，配置 TypeScript、Tailwind CSS、ESLint、shadcn/ui、Prisma。创建 `src/lib/errors.ts`（AppError 统一错误类）。
+**Description:** 初始化 Next.js 16 项目，配置 TypeScript、Tailwind CSS v4、ESLint、Prisma 7。**未使用 shadcn/ui**（手写 Tailwind 组件）。创建 `src/lib/errors.ts`（AppError 统一错误类）。
 
 **Acceptance criteria:**
 - [ ] `npm run dev` 启动成功
 - [ ] `npm run lint` 和 `npm run typecheck` 通过
 - [ ] 目录结构与 Spec 一致（含 `src/lib/errors.ts`）
 - [ ] Prisma 可连接 PostgreSQL
-- [ ] `.env.example` 包含所有环境变量模板
+- [ ] `.env.example` 包含所有环境变量模板（含 `PORT`、`STORAGE_LOCAL_*`）
 
 **Verification:**
 - `npm run dev` 启动无报错
@@ -57,15 +57,16 @@
 **Dependencies:** None
 
 **Files likely touched:**
-- `package.json`
+- `package.json`（注意：项目实际使用 Next.js 16 + Prisma 7 + Tailwind v4，不是 plan 里写的 Next.js 15）
 - `tsconfig.json`
-- `tailwind.config.ts`
 - `next.config.ts`
-- `.eslintrc` + `.env.example`
+- `eslint.config.mjs`（ESLint 9 flat config）
+- `postcss.config.mjs`
+- `.env.example`
 - `prisma/schema.prisma`
 - `src/lib/db.ts` + `src/lib/errors.ts`
 
-**Estimated scope:** L (7 files — 脚手架配置类，非业务逻辑)
+**Estimated scope:** L（实际是 M，多花在 Prisma 7 + Tailwind v4 的新配置语法上）
 
 ---
 
@@ -96,26 +97,27 @@
 
 #### Task 3: 认证系统
 
-**Description:** 配置 NextAuth.js v5（Credentials Provider），实现注册/登录/登出，auth middleware 保护路由，`getCurrentUser()` 工具函数，角色定义。
+**Description:** 配置 NextAuth.js v5（Credentials Provider），**只实现登录/登出**（不开放公开注册，与 Spec 已决议事项 #13 一致；用户由 Admin 在后台创建）。auth proxy 保护路由，`getCurrentUser()` 工具函数，角色定义。
 
 **Acceptance criteria:**
-- [ ] 用户可以注册（邮箱+密码+姓名）、登录、登出
+- [ ] 用户可以登录、登出
 - [ ] 未登录访问受保护页面自动跳转登录
 - [ ] `getCurrentUser()` 返回当前用户信息和角色
 - [ ] 密码使用 bcrypt 哈希存储
+- [ ] **没有 register 页**（避免违反不开放注册原则）
 
 **Verification:**
-- 手动测试注册→登录→访问受保护页面→登出
+- 手动测试登录→访问受保护页面→登出
 - `npm run typecheck` 通过
 
 **Dependencies:** Task 2
 
 **Files likely touched:**
-- `src/lib/auth.ts`
+- `src/lib/auth.ts` + `src/lib/auth.config.ts`
 - `src/app/(auth)/login/page.tsx`
-- `src/app/(auth)/register/page.tsx`
-- `src/middleware.ts`
+- `src/proxy.ts`（Next.js 16 把 `middleware.ts` 改名为 `proxy.ts`）
 - `src/services/auth.service.ts`
+- `src/types/next-auth.d.ts`
 
 **Estimated scope:** M (5 files)
 
@@ -140,6 +142,7 @@
 - `src/app/(main)/layout.tsx`
 - `src/components/layout/sidebar.tsx`
 - `src/components/layout/header.tsx`
+- `src/components/layout/search-bar.tsx`
 
 **Estimated scope:** M (4 files)
 
@@ -184,26 +187,28 @@
 
 #### Task 6a: MarkdownEditor 组件（拆分自 Task 6）
 
-**Description:** 独立实现 `MarkdownEditor` 组件：左侧编辑区 + 右侧实时预览区（react-markdown + remark-gfm + rehype-sanitize），工具栏（加粗/斜体/代码/链接/图片），Tab 切换（编辑/预览/分屏），输入防抖（300ms）避免大文档渲染卡顿。该组件在 Task 6（需求提交）和 Task 9（评论）中复用。
+**Description:** 独立实现 `MarkdownEditor` 组件：**写/预览/分屏 三档 Tab**、分屏模式下中间 4px 可拖动栏实时调整左右比例、@ 提及成员自动补全、文件拖拽上传、toolbar（加粗/斜体/代码/链接/图片/列表/引用/标题）、输入防抖（300ms）避免大文档渲染卡顿。该组件在 Task 6（需求提交）和 Task 9（评论）中复用。
 
 **Acceptance criteria:**
 - [ ] Markdown 编辑器支持实时预览（300ms 防抖）
 - [ ] 工具栏按钮可插入格式标记
 - [ ] Tab 切换编辑/预览/分屏三种模式
+- [ ] 分屏模式下可左右拖动调整左右宽度
 - [ ] 渲染经过 rehype-sanitize（无 XSS）
 - [ ] Ctrl+Enter 触发提交回调
+- [ ] @ 提及成员列表 + 拖拽上传图片（可选）
 
 **Verification:**
 - 单元测试 sanitize 行为（输入 `<script>` 不执行）
-- 手动测试实时预览和工具栏
+- 手动测试实时预览、工具栏、拖动分屏栏
 
 **Dependencies:** Task 1
 
 **Files likely touched:**
 - `src/components/ui/markdown-editor.tsx`
-- `tests/unit/markdown-editor.test.tsx`
+- `tests/unit/markdown.test.tsx`
 
-**Estimated scope:** S (2 files)
+**Estimated scope:** M（原估算 S 严重偏低；实际包含 toolbar + 拖动栏 + @mention + 拖拽 + 防抖，~400 行）
 
 ---
 
@@ -231,11 +236,14 @@
 **Files likely touched:**
 - `src/services/requirement.service.ts`
 - `src/app/(main)/projects/[slug]/requirements/new/page.tsx`
-- `src/components/requirement/quick-submit.tsx`
-- `src/components/requirement/requirement-form.tsx`
+- `src/components/requirement/quick-submit.tsx`（项目内嵌标题快提）
+- `src/components/requirement/requirement-form.tsx`（完整页表单）
+- `src/components/requirement/global-quick-submit.tsx`（全局 FAB + N 键弹窗）
+- `src/components/requirement/requirement-form-fields.tsx`（共享字段）
 - `src/lib/validation/requirement.ts`
+- `src/hooks/use-requirement-draft.ts`（localStorage 草稿）
 
-**Estimated scope:** M (5 files)
+**Estimated scope:** L（实际比 M 大，因为多了全局弹窗 + 共享表单字段组件 + 草稿 hook）
 
 ---
 
@@ -321,7 +329,7 @@
 
 #### Task 8: 需求详情页
 
-**Description:** 顶部编号+标题+状态标签+操作按钮，正文区 Markdown 渲染需求描述（rehype-sanitize），右侧栏元信息（优先级/指派人/期望日期/标签/投票数），状态时间线（含快速通道标记），内联编辑所有字段（权限控制），附件列表展示。**预留组件插槽**（comments slot / vote slot / actions slot）供 Task 9/10/11 填充，避免并行开发文件冲突。
+**Description:** 顶部编号+标题+状态标签+操作按钮，正文区 Markdown 渲染需求描述（rehype-sanitize），右侧栏元信息（优先级/指派人/期望日期/标签/投票数），状态时间线（含快速通道标记），内联编辑所有字段（权限控制），附件列表展示。**不采用组件插槽模式**（实际开发是单人串行，不存在并行冲突；详情页直接组装 `editable-fields`、`status-actions`、`vote-button`、`comment-section` 等子组件）。
 
 **Acceptance criteria:**
 - [ ] 详情页正确渲染所有信息
@@ -329,22 +337,22 @@
 - [ ] 状态时间线完整显示，快速通道跳转有视觉标记
 - [ ] 有权限的用户可内联编辑字段（author 改 title/body，Manager 改 priority/assignee）
 - [ ] 附件列表正确显示，可下载
-- [ ] 预留 comments/vote/actions 组件插槽
 
 **Verification:**
 - 手动测试详情页所有功能
-- `npm run typecheck` 确认插槽接口类型正确
 
 **Dependencies:** Task 7, Task 6.5b
 
 **Files likely touched:**
 - `src/app/(main)/projects/[slug]/requirements/[id]/page.tsx`
-- `src/components/requirement/requirement-detail.tsx`
+- `src/components/requirement/editable-fields.tsx`（内联编辑）
+- `src/components/requirement/status-actions.tsx`（状态操作按钮）
 - `src/components/requirement/status-timeline.tsx`
-- `src/components/requirement/inline-edit.tsx`
-- `src/components/requirement/detail-slots.tsx`  // 插槽接口定义
+- `src/components/requirement/vote-button.tsx`
+- `src/components/requirement/label-selector.tsx`
+- `src/components/requirement/assignee-selector.tsx`
 
-**Estimated scope:** L (5 files)
+**Estimated scope:** L (7 files)
 
 ---
 
@@ -512,7 +520,153 @@
 
 ---
 
-### Phase 4: 管理后台 + 收尾
+### Phase 3.5：未归集需求扩展（项目后建）
+
+> 这一阶段是产品模型的核心调整：从"所有需求必须挂项目"改为"需求可以先于项目存在"。在所有基础功能上线后由用户需求驱动加入。
+
+#### Task 18: Schema 改造 + 全局编号
+
+**Description:** `Requirement.projectId` 和 `number` 改为可空，新增 `globalNumber` 字段（全局唯一）和 `GlobalCounter` 表（原子自增）。迁移：把现有需求的 projectId/number 保持不动，用 `ROW_NUMBER() OVER (createdAt)` 给所有已有需求补 globalNumber，并初始化 GlobalCounter 为 MAX(globalNumber)。
+
+**Acceptance criteria:**
+- [ ] `prisma migrate deploy` 成功
+- [ ] 所有已有需求有合法 globalNumber（1..N）
+- [ ] 新建未归集需求自动分配下一个 globalNumber
+- [ ] 迁移是幂等的（重复执行不破坏数据）
+
+**Verification:**
+- `prisma migrate deploy` 应用迁移
+- 手动 SELECT globalNumber 验证连续性
+
+**Dependencies:** Task 13（管理后台的 review 流程需要先稳定）
+
+**Files likely touched:**
+- `prisma/schema.prisma`
+- `prisma/migrations/<timestamp>_support_unassigned_requirements/`
+
+**Estimated scope:** S (2 files)
+
+---
+
+#### Task 19: 未归集需求的创建与访问
+
+**Description:**
+- 新增 `POST /api/requirements`（无 projectId，任何登录用户）
+- 新增 `requirementService.createUnassigned()` 走 GlobalCounter 生成 globalNumber
+- 新增 `/requirements/[id]` 页面（不带项目上下文，简化版详情页）
+- 改造 `dashboard` 改为 flat list（显示用户提交 + 指派给自己的需求）
+- 改造 `getById` 权限：未归集需求仅作者本人 / MANAGER / ADMIN 可读
+
+**Acceptance criteria:**
+- [ ] 任何登录用户可调用 `POST /api/requirements` 创建未归集需求
+- [ ] 客户仪表盘显示自己的需求列表（含未归集 + 已归集）
+- [ ] 未归集需求详情页可访问，URL `/requirements/[id]`
+- [ ] 已归集需求详情页 `/projects/[slug]/requirements/[id]` 正常工作
+- [ ] 集成测试覆盖未归集需求的 CRUD
+
+**Verification:**
+- `npm run test` 通过
+- 手动测试客户提交 → 仪表盘 → 详情页
+
+**Dependencies:** Task 18
+
+**Files likely touched:**
+- `src/services/requirement.service.ts`
+- `src/services/requirement-access.ts`（新的共享权限校验）
+- `src/app/api/requirements/route.ts`（新建）
+- `src/app/api/requirements/[id]/route.ts`
+- `src/app/(main)/requirements/[id]/page.tsx`（新建）
+- `src/app/(main)/dashboard/page.tsx`
+- `tests/integration/requirements.test.ts`
+
+**Estimated scope:** L
+
+---
+
+#### Task 20: 需求池 + 归集到项目
+
+**Description:**
+- 新增 `/requirements/inbox` 页面（MANAGER/ADMIN 可见，列出所有未归集需求）
+- 新增 `/admin/inbox` 复用同一组件（管理员入口）
+- 新增 `GET /api/requirements/inbox`
+- 新增 `PATCH /api/requirements/[id]/project` 把未归集需求归集到指定项目（生成项目内 number）
+- 改造 `createProject` 弹窗：新建项目时可勾选若干未归集需求一并归集
+- 调整侧边栏：SUBMITTER 看不到项目和需求池入口；MANAGER/ADMIN 多一个"需求池"
+
+**Acceptance criteria:**
+- [ ] MANAGER/ADMIN 在需求池看到所有未归集需求
+- [ ] 需求详情页提供"归集到项目"按钮（仅 MANAGER/ADMIN）
+- [ ] 新建项目弹窗支持批量勾选归集
+- [ ] 归集后需求自动获得项目内 number
+- [ ] 归集成功后作者收到 STATUS_CHANGE 通知
+
+**Verification:**
+- 手动测试：客户提需求 → MANAGER 需求池 → 归集到新建项目
+- `npm run test` 通过
+
+**Dependencies:** Task 19
+
+**Files likely touched:**
+- `src/services/project.service.ts`（create 增加 requirementIds 参数）
+- `src/services/requirement.service.ts`（assignToProject 方法）
+- `src/app/api/requirements/inbox/route.ts`（新建）
+- `src/app/api/requirements/[id]/project/route.ts`（新建）
+- `src/app/(main)/requirements/inbox/page.tsx`（新建）
+- `src/app/admin/inbox/page.tsx`（新建）
+- `src/components/requirement/requirement-inbox.tsx`（新建）
+- `src/components/requirement/assign-to-project.tsx`（新建）
+- `src/components/requirement/create-project-dialog.tsx`（改造）
+- `src/components/layout/sidebar.tsx`（角色感知）
+
+**Estimated scope:** L
+
+---
+
+#### Task 21: 未归集需求的服务层适配
+
+**Description:** 让 comment / vote / attachment / label / search / notification 在未归集需求上也能工作：
+- vote: 任何登录用户可对未归集需求投票（"低阻力反馈"）
+- comment: 任何登录用户可对未归集需求评论
+- attachment: 作者 / MANAGER / ADMIN 可上传/删除附件
+- label: 未归集需求不能贴 Label（Label 是项目维度）
+- search: 未归集需求检索范围 = 作者本人提交的
+- notification: 未归集需求的事件只广播给作者；归集后恢复项目成员广播
+- transition: 未归集需求仅允许 SUBMITTED ↔ REJECTED（绕过标准 IPD 矩阵）
+
+**Acceptance criteria:**
+- [ ] 未归集需求可投票、可评论、可上传附件
+- [ ] 未归集需求不能贴 Label
+- [ ] 未归集需求的状态流转被严格限制
+- [ ] SSE 广播规则正确
+- [ ] 通知触发规则正确
+
+**Verification:**
+- 集成测试覆盖各服务的未归集分支
+
+**Dependencies:** Task 20
+
+**Files likely touched:**
+- `src/services/vote.service.ts`
+- `src/services/comment.service.ts`
+- `src/services/attachment.service.ts`
+- `src/services/label.service.ts`
+- `src/services/search.service.ts`
+- `src/services/notification.service.ts`
+- `src/services/requirement.service.ts`（transition 改造）
+
+**Estimated scope:** L
+
+---
+
+### Checkpoint: Unassigned Requirements
+
+- [ ] 客户提需求阻力最小化（5 秒）
+- [ ] MANAGER 在需求池看到所有未归集需求
+- [ ] 归集（单个 + 批量）正常生成项目编号
+- [ ] 角色视图隔离（SUBMITTER 看不到项目和需求池）
+- [ ] **Review with human before proceeding**
+
+---
 
 #### Task 13: 管理后台 — 需求评审与统计
 
@@ -615,30 +769,31 @@
 
 **Description:** 编写 Spec 要求的测试：至少 1 条标准路径 E2E + 1 条快速通道 E2E；API 端点集成测试覆盖 CRUD + 权限检查；状态流转矩阵完整覆盖（8×8 + 快速通道 + 回退路径）。使用独立测试数据库，seed 隔离。
 
-**Acceptance criteria:**
+**当前实际状态（实现后记录）：**
+- [x] 单元测试：`tests/unit/transitions.test.ts`（48 个用例，覆盖完整 8×8 流转矩阵 + 角色权限）
+- [x] 单元测试：`tests/unit/errors.test.ts`、`rate-limit.test.ts`、`storage.test.ts`、`api-helpers.test.ts`、`ai.test.ts`、`counter.test.ts`、`markdown.test.tsx`
+- [x] 集成测试：`tests/integration/requirements.test.ts`（28 个用例，覆盖需求/评论/投票/通知/成员/标签/未归集需求/归集到项目/批量归集）
+- [ ] **未完成**：Playwright E2E —— `tests/e2e/workflow.spec.ts` 和 `tests/e2e/permissions.spec.ts` 是初始代码就存在的预制件，未针对当前 UI（含未归集需求弹窗、需求池、归集操作）做更新和验证。**见 docs/TODO.md 的 E2E 重写任务**。
+- [ ] **未完成**：`tests/integration/storage-s3.test.ts` 默认被排除（需要本地 MinIO）；未验证是否能跑通
+
+**Acceptance criteria（待补全）：**
 - [ ] E2E：完整标准路径（提交→评审→规划→开发→测试→交付→验收）
 - [ ] E2E：完整快速通道（提交→直接开发→交付→验收）
-- [ ] 集成测试：需求/评论/投票/附件 API CRUD
-- [ ] 集成测试：权限检查（Submitter 不能评审、Developer 不能验收等）
-- [ ] 单元测试：状态流转矩阵 100% 覆盖（含回退路径）
+- [ ] E2E：未归集需求流程（提交 → 需求池 → 归集 → 进入项目）
 - [ ] 测试使用独立数据库，不污染 dev/prod
 
 **Verification:**
-- `npm run test` 全部通过
-- `npm run test:e2e` 全部通过
-- 覆盖率报告确认状态流转 100%
+- `npm run test` 全部通过（✅ 120 个用例已通过）
+- `npm run test:e2e` 全部通过（❌ 未完成）
 
-**Dependencies:** Task 13, Task 14, Task 15, Task 16
+**Dependencies:** Task 13, Task 14, Task 15, Task 16, Task 18（未归集扩展）
 
 **Files likely touched:**
-- `tests/e2e/standard-path.spec.ts`
-- `tests/e2e/quick-path.spec.ts`
-- `tests/integration/requirements.test.ts`
-- `tests/integration/auth-permissions.test.ts`
-- `tests/unit/requirement-transition.test.ts` (补全回退路径)
-- `playwright.config.ts`
+- `tests/e2e/workflow.spec.ts`（重写）
+- `tests/e2e/permissions.spec.ts`（重写）
+- `tests/integration/storage-s3.test.ts`（验证）
 
-**Estimated scope:** L (6 files — 测试代码，非业务逻辑)
+**Estimated scope:** L
 
 ---
 
@@ -664,12 +819,13 @@
 | IPD 7步流程对内部小需求太重 | High | 快速通道：Manager/Admin 可跳过中间状态，StatusLog 完整记录 |
 | SSE 单实例限制 | Medium | MVP 单实例部署；后续加 Redis pub/sub 跨实例广播（非目标中已声明） |
 | PostgreSQL 全文搜索性能 | Low (MVP) | MVP 阶段数据量小，后续可迁移到 pg_trgm 或 Meilisearch |
-| 需求编号并发冲突 | Medium | Project.lastRequirementNumber + 事务行锁（Spec 已定义策略） |
+| 需求编号并发冲突 | ~~Medium~~ | 已解决：Prisma `update { increment: 1 }` 原子操作；新增 `GlobalCounter` 表支撑 globalNumber |
 | 附件上传安全风险 | Medium | mimeType 白名单 + 文件大小限制 + 文件名消毒 + 权限校验 |
 | S3 配置复杂性 | Low | 本地存储作为默认值，S3 为可选；环境变量驱动 |
 | Markdown XSS 风险 | Medium | rehype-sanitize + 禁用 raw HTML + 过滤 javascript: URL |
-| 详情页并行开发冲突 | Medium | Task 8 预留组件插槽（comments/vote/actions slot）避免文件冲突 |
-| 通知触发与 Service 层耦合 | Medium | Task 11.5 专门处理通知集成钩子，避免回改 Task 9/10/11 |
+| 详情页并行开发冲突 | Low (单人开发) | **实际未采用插槽模式** — 单人串行开发不冲突；详情页直接组装子组件 |
+| 通知触发与 Service 层耦合 | Low | 已在实际开发中通过 notificationService.createMany 直接调用解决 |
+| 未归集需求通知范围 | Low | 未归集时只推给作者；归集后恢复项目成员广播 |
 
 ## Parallelization Opportunities
 
@@ -678,8 +834,9 @@
 - **Task 6a (MarkdownEditor) + Task 6.5a (存储抽象) + Task 16 (AI 接口)** — 均只依赖 Task 6 的 Service 层，互不共享文件
 - **Task 14 (看板+搜索)** — 依赖 Task 7，可在 Phase 3 期间并行启动（注意：assignee 筛选需等 Task 15）
 - **Task 13 (管理后台)** — 依赖 Task 12，但不依赖 Task 14/15/16
+- **Phase 3.5 的 Task 18-21** — 由用户新需求触发，本质上是独立功能，可与 Phase 4 部分并行
 
-> ⚠️ Task 9 (评论) + Task 10 (投票) + Task 11 (状态流转) 不完全独立 — 三者都需修改需求详情页 UI（requirement-detail.tsx）。建议：Task 8 预留组件插槽（comments slot / vote slot / actions slot），或按顺序执行避免文件冲突。
+> ⚠️ Task 9 (评论) + Task 10 (投票) + Task 11 (状态流转) 在多人并行时不完全独立 — 三者都需修改需求详情页 UI。**实际开发由单人串行完成**，避免了文件冲突；插件插槽方案未采用。
 
 ## Task 依赖图
 
@@ -703,6 +860,14 @@ Task 1 (脚手架 + errors.ts)
                            ├→ Task 15 (标签+指派) → Task 11.5 (指派通知)
                            └→ Task 16 (AI 接口)
                                 └→ Task 17 (E2E + 集成测试)
+
+# Phase 3.5：未归集需求扩展（项目后建）
+Task 13 ─┐
+         ├→ Task 18 (Schema: projectId/number 可空 + GlobalCounter + globalNumber)
+         │      └→ Task 19 (创建无项目需求 + /requirements/[id] 详情页)
+         │              └→ Task 20 (需求池 + 归集到项目 + 批量归集)
+         │                     └→ Task 21 (comment/vote/attachment/label/notification 服务适配)
+         │                            └→ Task 17 (E2E 需要补充未归集流程)
 ```
 
-> 注意：Task 9/10/11 在详情页 UI 上有共享文件（requirement-detail.tsx），需通过组件插槽预分解或顺序执行避免冲突。
+> 注意：Task 9/10/11 在多人并行时共享详情页 UI 文件。实际开发由单人串行完成，避免了冲突；插件插槽方案（detail-slots.tsx）未采用。

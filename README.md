@@ -47,6 +47,21 @@ npm run dev
 
 The dev server boots on http://localhost:3000. Sign in with the seeded admin or register a new account.
 
+### Seeded demo accounts
+
+`npm run db:seed` creates the following users (all passwords are `password123`):
+
+| Email | Role | Display name |
+|---|---|---|
+| `admin@easyreq.dev` | ADMIN | System Admin |
+| `manager@easyreq.dev` | MANAGER | IT Manager |
+| `dev@easyreq.dev` | DEVELOPER | IT Developer |
+| `submitter@company.dev` | SUBMITTER | Submitter One |
+| `alice@company.dev` | SUBMITTER | Alice (Submitter) |
+| `bob@company.dev` | SUBMITTER | Bob (Submitter) |
+
+It also seeds two projects (`Internal Portal` and `IT Infrastructure`) with sample requirements, comments, votes, and labels.
+
 ## Architecture
 
 | Layer | Choice | Why |

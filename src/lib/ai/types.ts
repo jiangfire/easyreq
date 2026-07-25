@@ -12,6 +12,21 @@ export interface AIRequirementOutput {
   acceptanceCriteria?: string
 }
 
+/**
+ * Augmented input for callers that need to correlate results back to DB
+ * records. The provider only inspects `title`/`body`; `id` is opaque.
+ */
+export interface AIRequirementCandidate {
+  id: string
+  title: string
+  body?: string | null
+}
+
+export interface AIDedupHit {
+  candidate: AIRequirementCandidate
+  score: number
+}
+
 export interface AIProvider {
   /**
    * Classify a requirement into a priority and category.
@@ -26,8 +41,8 @@ export interface AIProvider {
    */
   deduplicate(
     input: AIRequirementInput,
-    candidates: AIRequirementInput[],
-  ): Promise<Array<{ candidate: AIRequirementInput; score: number }>>
+    candidates: AIRequirementCandidate[],
+  ): Promise<AIDedupHit[]>
 
   /**
    * Suggest priority based on content.

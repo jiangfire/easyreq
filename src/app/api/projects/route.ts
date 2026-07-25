@@ -34,7 +34,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const project = await projectService.create(result.data, user.id)
+    const project = await projectService.create(
+      result.data,
+      user.id,
+      result.data.requirementIds ?? [],
+    )
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
     if (error instanceof AppError) {

@@ -8,6 +8,13 @@ const prisma = new PrismaClient({ adapter })
 async function main() {
   console.log('Seeding database...')
 
+  // Ensure global counter exists for requirement numbering
+  await prisma.globalCounter.upsert({
+    where: { name: 'requirement' },
+    update: {},
+    create: { name: 'requirement', value: 0 },
+  })
+
   // Create users
   const passwordHash = await bcrypt.hash('password123', 12)
 
@@ -210,8 +217,9 @@ async function main() {
     },
   ]
 
-  // Create requirements with per-project sequential numbering
+  // Create requirements with per-project sequential numbering and global numbering
   const projectRequirements = new Map<string, number>()
+  let nextGlobalNumber = (await prisma.requirement.aggregate({ _max: { globalNumber: true } }))._max.globalNumber ?? 0
 
   for (let i = 0; i < requirements.length; i++) {
     const r = requirements[i]
@@ -219,18 +227,20 @@ async function main() {
       where: { projectId: r.project.id, title: r.title },
     })
     if (existing) {
-      console.log(`  Requirement #${existing.number} already exists: ${r.title}`)
-      projectRequirements.set(r.project.id, Math.max(projectRequirements.get(r.project.id) ?? 0, existing.number))
+      console.log(`  Requirement #${existing.globalNumber} already exists: ${r.title}`)
+      projectRequirements.set(r.project.id, Math.max(projectRequirements.get(r.project.id) ?? 0, existing.number ?? 0))
       continue
     }
 
     const number = (projectRequirements.get(r.project.id) ?? 0) + 1
     projectRequirements.set(r.project.id, number)
+    nextGlobalNumber += 1
 
     const req = await prisma.requirement.create({
       data: {
         projectId: r.project.id,
         authorId: r.author.id,
+        globalNumber: nextGlobalNumber,
         number,
         title: r.title,
         body: r.body,
@@ -242,7 +252,7 @@ async function main() {
           : undefined,
       },
     })
-    console.log(`  Created #${req.number}: ${r.title} [${r.status}]`)
+    console.log(`  Created #${req.globalNumber} (${req.number}): ${r.title} [${r.status}]`)
 
     // Add a comment to the first requirement
     if (i === 0) {
@@ -274,6 +284,12 @@ async function main() {
       data: { lastRequirementNumber: maxNumber },
     })
   }
+
+  // Update global counter to the highest globalNumber used
+  await prisma.globalCounter.update({
+    where: { name: 'requirement' },
+    data: { value: nextGlobalNumber },
+  })
 
   console.log('Seed complete!')
 }

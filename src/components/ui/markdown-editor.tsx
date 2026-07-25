@@ -21,6 +21,7 @@ export function MarkdownEditor({
   onSubmit,
   requirementId,
   mentions = false,
+  initialSplitPercent = 50,
 }: {
   value: string
   onChange: (value: string) => void
@@ -29,6 +30,7 @@ export function MarkdownEditor({
   onSubmit?: () => void
   requirementId?: string
   mentions?: boolean
+  initialSplitPercent?: number
 }) {
   const [mode, setMode] = useState<Mode>('write')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -36,6 +38,11 @@ export function MarkdownEditor({
   const mirrorRef = useRef<HTMLDivElement>(null)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [splitPercent, setSplitPercent] = useState(() =>
+    Math.min(85, Math.max(15, initialSplitPercent)),
+  )
+  const splitContainerRef = useRef<HTMLDivElement>(null)
+  const isDraggingSplit = useRef(false)
 
   const [preview, setPreview] = useState(value)
   const [dragOver, setDragOver] = useState(false)
@@ -47,6 +54,37 @@ export function MarkdownEditor({
   const [mentionIndex, setMentionIndex] = useState(0)
   const [mentionPos, setMentionPos] = useState({ left: 0, top: 0 })
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null)
+
+  // Drag the horizontal splitter to resize the two split panels.
+  useEffect(() => {
+    if (mode !== 'split') return
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingSplit.current || !splitContainerRef.current) return
+      const rect = splitContainerRef.current.getBoundingClientRect()
+      const percent = ((e.clientX - rect.left) / rect.width) * 100
+      setSplitPercent(Math.min(85, Math.max(15, percent)))
+    }
+    const onUp = () => {
+      if (isDraggingSplit.current) {
+        isDraggingSplit.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [mode])
+
+  function startSplitDrag(e: React.MouseEvent) {
+    e.preventDefault()
+    isDraggingSplit.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
 
   // Debounced preview update (300ms) to avoid jank on large documents
   useEffect(() => {
@@ -307,7 +345,9 @@ export function MarkdownEditor({
 
       {/* Editor area */}
       <div
+        ref={splitContainerRef}
         className={`relative flex ${mode === 'split' ? 'flex-row' : 'flex-col'}`}
+        style={mode === 'split' ? { minHeight } : undefined}
         onDragOver={(e) => {
           e.preventDefault()
           if (requirementId) setDragOver(true)
@@ -325,7 +365,14 @@ export function MarkdownEditor({
           </div>
         )}
         {mode !== 'preview' && (
-          <div className="relative">
+          <div
+            className="relative"
+            style={
+              mode === 'split'
+                ? { flexBasis: `${splitPercent}%`, flexShrink: 0, minWidth: 0 }
+                : undefined
+            }
+          >
             <textarea
               ref={textareaRef}
               value={value}
@@ -337,8 +384,10 @@ export function MarkdownEditor({
               onClick={updateMentionState}
               onKeyUp={updateMentionState}
               placeholder={placeholder}
-              className="w-full resize-y border-0 p-3 text-sm outline-none focus:ring-0"
-              style={{ minHeight }}
+              className={`w-full border-0 p-3 text-sm outline-none focus:ring-0 ${
+                mode === 'split' ? 'h-full resize-none' : 'resize-y'
+              }`}
+              style={mode === 'split' ? { minHeight, height: '100%' } : { minHeight }}
             />
             {/* Hidden mirror for cursor position */}
             <div
@@ -370,10 +419,19 @@ export function MarkdownEditor({
             )}
           </div>
         )}
+        {mode === 'split' && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={startSplitDrag}
+            className="w-1 shrink-0 cursor-col-resize bg-gray-200 transition-colors hover:bg-blue-400"
+            title="拖动调整宽度"
+          />
+        )}
         {mode !== 'write' && (
           <div
             className={`overflow-auto border-gray-200 p-3 text-sm ${mode === 'split' ? 'border-l' : 'border-t'}`}
-            style={{ minHeight }}
+            style={mode === 'split' ? { flexBasis: `${100 - splitPercent}%`, flexGrow: 1, minWidth: 0 } : { minHeight }}
           >
             {preview ? (
               <div className="prose prose-sm max-w-none">

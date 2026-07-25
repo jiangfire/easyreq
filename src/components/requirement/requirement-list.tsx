@@ -4,7 +4,8 @@ import { STATUS_CONFIG, STATUS_ORDER } from '@/lib/constants'
 
 type RequirementItem = {
   id: string
-  number: number
+  globalNumber: number
+  number: number | null
   title: string
   status: string
   priority: string
@@ -92,7 +93,7 @@ export function RequirementList({
               }`}
             >
               {/* Number */}
-              <span className="w-12 shrink-0 text-xs text-gray-400">#{req.number}</span>
+              <span className="w-12 shrink-0 text-xs text-gray-400">#{req.number ?? req.globalNumber}</span>
 
               {/* Title + Status */}
               <div className="min-w-0 flex-1">

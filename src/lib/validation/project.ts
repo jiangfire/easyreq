@@ -8,6 +8,7 @@ export const createProjectSchema = z.object({
     .max(30, '项目标识最多30个字符')
     .regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, '项目标识只能包含小写字母、数字和连字符'),
   description: z.string().max(500, '描述最多500个字符').optional(),
+  requirementIds: z.array(z.string()).optional(),
 })
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>

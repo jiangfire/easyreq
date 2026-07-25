@@ -120,6 +120,10 @@ export class LabelService {
       throw new AppError('NOT_FOUND', '需求不存在')
     }
 
+    if (!requirement.projectId) {
+      throw new AppError('VALIDATION_ERROR', '未归集需求不能使用标签')
+    }
+
     const membership = await db.projectMember.findUnique({
       where: {
         userId_projectId: { userId, projectId: requirement.projectId },
@@ -155,6 +159,10 @@ export class LabelService {
     })
     if (!requirement) {
       throw new AppError('NOT_FOUND', '需求不存在')
+    }
+
+    if (!requirement.projectId) {
+      throw new AppError('VALIDATION_ERROR', '未归集需求不能使用标签')
     }
 
     const membership = await db.projectMember.findUnique({

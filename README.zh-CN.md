@@ -47,6 +47,21 @@ npm run dev
 
 开发服务器跑在 http://localhost:3000。用 seed 出来的管理员登录，或者自己注册一个。
 
+### 默认演示账号
+
+执行 `npm run db:seed` 后会创建以下用户（密码都是 `password123`）：
+
+| 邮箱 | 角色 | 显示名称 |
+|---|---|---|
+| `admin@easyreq.dev` | ADMIN | System Admin |
+| `manager@easyreq.dev` | MANAGER | IT Manager |
+| `dev@easyreq.dev` | DEVELOPER | IT Developer |
+| `submitter@company.dev` | SUBMITTER | Submitter One |
+| `alice@company.dev` | SUBMITTER | Alice (Submitter) |
+| `bob@company.dev` | SUBMITTER | Bob (Submitter) |
+
+同时会写入两个示例项目（`Internal Portal` 和 `IT Infrastructure`）、若干需求、评论、投票和标签。
+
 ## 技术架构
 
 | 层 | 选型 | 原因 |

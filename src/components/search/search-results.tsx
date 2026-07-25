@@ -7,12 +7,15 @@ import { StatusBadge } from '@/components/requirement/status-badge'
 
 type SearchResult = {
   id: string
-  number: number
+  globalNumber: number
+  number: number | null
   title: string
+  body: string | null
   status: string
   priority: string
   createdAt: string
-  project: { slug: string; name: string }
+  rank: number
+  project: { slug: string; name: string } | null
   _count: { votes: number; comments: number }
 }
 
@@ -86,16 +89,23 @@ export function SearchResults({ query }: { query: string }) {
           {results.map((r) => (
             <Link
               key={r.id}
-              href={`/projects/${r.project.slug}/requirements/${r.id}`}
+              href={r.project ? `/projects/${r.project.slug}/requirements/${r.id}` : `/requirements/${r.id}`}
               className="block rounded-lg border border-gray-200 bg-white p-3 hover:border-blue-300"
             >
               <div className="flex items-center gap-2">
                 <StatusBadge status={r.status} />
-                <span className="text-xs text-gray-400">#{r.number}</span>
+                <span className="text-xs text-gray-400">#{r.number ?? r.globalNumber}</span>
+                <RelevanceBadge rank={r.rank} />
               </div>
               <p className="mt-1 text-sm font-medium text-gray-900">{r.title}</p>
-              <p className="text-xs text-gray-500">
-                {r.project.name} · {new Date(r.createdAt).toLocaleDateString('zh-CN')} · {r._count.votes} 票 ·{' '}
+              {r.body && (
+                <p className="mt-1 line-clamp-2 text-xs text-gray-500">
+                  {extractSnippet(r.body, query)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                {r.project ? `${r.project.name} · ` : ''}
+                {new Date(r.createdAt).toLocaleDateString('zh-CN')} · {r._count.votes} 票 ·{' '}
                 {r._count.comments} 评论
               </p>
             </Link>
@@ -104,4 +114,31 @@ export function SearchResults({ query }: { query: string }) {
       )}
     </div>
   )
+}
+
+function RelevanceBadge({ rank }: { rank: number }) {
+  const percent = Math.round(rank * 100)
+  if (rank < 0.3) return null
+  return (
+    <span
+      className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+      title={`匹配度 ${percent}%`}
+    >
+      匹配 {percent}%
+    </span>
+  )
+}
+
+/**
+ * Extract a small snippet around the first matching keyword so the user can
+ * see why this result was returned. Falls back to the first 80 chars.
+ */
+function extractSnippet(body: string, query: string): string {
+  const lower = body.toLowerCase()
+  const term = query.trim().toLowerCase().split(/\s+/)[0] ?? ''
+  const idx = term ? lower.indexOf(term) : -1
+  if (idx < 0) return body.slice(0, 80)
+  const start = Math.max(0, idx - 30)
+  const end = Math.min(body.length, idx + term.length + 50)
+  return (start > 0 ? '...' : '') + body.slice(start, end) + (end < body.length ? '...' : '')
 }

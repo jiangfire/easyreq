@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { SearchBar } from './search-bar'
 
 import { signOut } from '@/lib/auth'
@@ -53,7 +54,8 @@ export async function Header({ user }: { user: HeaderUser }) {
         <form
           action={async () => {
             'use server'
-            await signOut({ redirectTo: '/login' })
+            await signOut()
+            redirect('/login')
           }}
         >
           <button

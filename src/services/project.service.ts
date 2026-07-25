@@ -44,7 +44,7 @@ export class ProjectService {
     return project
   }
 
-  async create(input: CreateProjectInput, creatorId: string) {
+  async create(input: CreateProjectInput, creatorId: string, requirementIds: string[] = []) {
     const existing = await db.project.findUnique({
       where: { slug: input.slug },
     })
@@ -52,16 +52,46 @@ export class ProjectService {
       throw new AppError('CONFLICT', '项目标识已存在')
     }
 
-    return db.project.create({
-      data: {
-        name: input.name,
-        slug: input.slug,
-        description: input.description,
-        members: {
-          create: { userId: creatorId, role: 'OWNER' },
+    if (requirementIds.length > 0) {
+      // Verify all requirements are unassigned and accessible by the creator.
+      const requirements = await db.requirement.findMany({
+        where: { id: { in: requirementIds }, projectId: null },
+        select: { id: true, authorId: true },
+      })
+      if (requirements.length !== requirementIds.length) {
+        throw new AppError('VALIDATION_ERROR', '包含已归集或不存在的需求')
+      }
+    }
+
+    return db.$transaction(async (tx) => {
+      const project = await tx.project.create({
+        data: {
+          name: input.name,
+          slug: input.slug,
+          description: input.description,
+          members: {
+            create: { userId: creatorId, role: 'OWNER' },
+          },
         },
-      },
-      include: { members: true },
+        include: { members: true },
+      })
+
+      if (requirementIds.length > 0) {
+        // Assign sequential project numbers to the selected requirements.
+        const existingCount = await tx.requirement.count({ where: { projectId: project.id } })
+        for (let i = 0; i < requirementIds.length; i++) {
+          await tx.requirement.update({
+            where: { id: requirementIds[i] },
+            data: { projectId: project.id, number: existingCount + i + 1 },
+          })
+        }
+        await tx.project.update({
+          where: { id: project.id },
+          data: { lastRequirementNumber: existingCount + requirementIds.length },
+        })
+      }
+
+      return project
     })
   }
 

@@ -55,7 +55,16 @@ export async function POST(
 
   try {
     const project = await projectService.getBySlug(slug, user.id)
-    const member = await projectService.addMember(project.id, result.data.userId, user.id)
+    // Resolve userId from email if only email was provided.
+    let targetUserId = result.data.userId
+    if (!targetUserId && result.data.email) {
+      const target = await db.user.findUnique({ where: { email: result.data.email.toLowerCase() } })
+      if (!target) {
+        return NextResponse.json({ error: { code: 'NOT_FOUND', message: '用户不存在' } }, { status: 404 })
+      }
+      targetUserId = target.id
+    }
+    const member = await projectService.addMember(project.id, targetUserId!, user.id)
     return NextResponse.json(member, { status: 201 })
   } catch (error) {
     if (error instanceof AppError) {

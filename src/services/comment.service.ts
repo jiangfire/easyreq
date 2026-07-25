@@ -4,6 +4,7 @@ import {
   notificationService,
   requirementLink,
 } from '@/services/notification.service'
+import { requireRequirementAccess } from '@/services/requirement-access'
 
 export class CommentService {
   async list(
@@ -49,6 +50,8 @@ export class CommentService {
         author: { select: { id: true, name: true } },
         requirement: {
           select: {
+            id: true,
+            globalNumber: true,
             number: true,
             title: true,
             authorId: true,
@@ -67,15 +70,19 @@ export class CommentService {
     const r = comment.requirement
     const notifiedUserIds = new Set<string>()
     const targets = []
+    const link = r.project
+      ? requirementLink(r.project.slug, r.number ?? r.globalNumber)
+      : `/requirements/${r.id}`
+    const displayNumber = r.number ?? r.globalNumber
 
     if (r.authorId !== authorId) {
       notifiedUserIds.add(r.authorId)
       targets.push({
         userId: r.authorId,
         type: 'COMMENT' as const,
-        title: `${comment.author.name} 评论了你的需求 #${r.number}`,
+        title: `${comment.author.name} 评论了你的需求 #${displayNumber}`,
         body: r.title,
-        link: requirementLink(r.project.slug, r.number),
+        link,
       })
     }
 
@@ -85,9 +92,9 @@ export class CommentService {
         targets.push({
           userId: c.authorId,
           type: 'COMMENT' as const,
-          title: `${comment.author.name} 回复了需求 #${r.number}`,
+          title: `${comment.author.name} 回复了需求 #${displayNumber}`,
           body: r.title,
-          link: requirementLink(r.project.slug, r.number),
+          link,
         })
       }
     }
@@ -96,9 +103,9 @@ export class CommentService {
       targets.push({
         userId: r.assigneeId,
         type: 'COMMENT' as const,
-        title: `${comment.author.name} 评论了指派给你的需求 #${r.number}`,
+        title: `${comment.author.name} 评论了指派给你的需求 #${displayNumber}`,
         body: r.title,
-        link: requirementLink(r.project.slug, r.number),
+        link,
       })
     }
 
@@ -110,7 +117,7 @@ export class CommentService {
   async update(commentId: string, userId: string, body: string) {
     const comment = await db.comment.findUnique({
       where: { id: commentId },
-      include: { requirement: { select: { id: true, projectId: true } } },
+      include: { requirement: { select: { id: true, projectId: true, authorId: true } } },
     })
 
     if (!comment) {
@@ -122,14 +129,7 @@ export class CommentService {
       throw new AppError('NOT_FOUND', '评论不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: comment.requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await this.checkAccess(comment.requirement.id, userId)
 
     if (comment.authorId !== userId) {
       throw new AppError('FORBIDDEN', '只能编辑自己的评论')
@@ -147,21 +147,14 @@ export class CommentService {
   async softDelete(commentId: string, userId: string, userRole: string) {
     const comment = await db.comment.findUnique({
       where: { id: commentId },
-      include: { requirement: { select: { id: true, projectId: true } } },
+      include: { requirement: { select: { id: true, projectId: true, authorId: true } } },
     })
 
     if (!comment) {
       throw new AppError('NOT_FOUND', '评论不存在')
     }
 
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: comment.requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await this.checkAccess(comment.requirement.id, userId)
 
     const isAuthor = comment.authorId === userId
     const isManager = userRole === 'MANAGER' || userRole === 'ADMIN'
@@ -178,20 +171,12 @@ export class CommentService {
   private async checkAccess(requirementId: string, userId: string) {
     const requirement = await db.requirement.findUnique({
       where: { id: requirementId },
-      select: { projectId: true },
+      select: { projectId: true, authorId: true },
     })
     if (!requirement) {
       throw new AppError('NOT_FOUND', '需求不存在')
     }
-
-    const membership = await db.projectMember.findUnique({
-      where: {
-        userId_projectId: { userId, projectId: requirement.projectId },
-      },
-    })
-    if (!membership) {
-      throw new AppError('FORBIDDEN', '你不是该项目成员')
-    }
+    await requireRequirementAccess(requirement, userId)
   }
 }
 

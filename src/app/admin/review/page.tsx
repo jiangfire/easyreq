@@ -39,16 +39,17 @@ export default async function ReviewQueuePage() {
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
                       <StatusBadge status={r.status} />
-                      <span className="text-xs text-gray-400">#{r.number}</span>
+                      <span className="text-xs text-gray-400">#{r.number ?? r.globalNumber}</span>
                     </div>
                     <Link
-                      href={`/projects/${r.project.slug}/requirements/${r.id}`}
+                      href={r.project ? `/projects/${r.project.slug}/requirements/${r.id}` : `/requirements/${r.id}`}
                       className="block truncate text-sm font-medium text-gray-900 hover:text-blue-600"
                     >
                       {r.title}
                     </Link>
                     <p className="mt-1 text-xs text-gray-500">
-                      {r.project.name} · {r.author.name} · {r._count.votes} 票 ·{' '}
+                      {r.project ? `${r.project.name} · ` : ''}
+                      {r.author.name} · {r._count.votes} 票 ·{' '}
                       {new Date(r.createdAt).toLocaleDateString('zh-CN')}
                     </p>
                   </div>
