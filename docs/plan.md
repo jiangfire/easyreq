@@ -817,7 +817,7 @@
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | IPD 7步流程对内部小需求太重 | High | 快速通道：Manager/Admin 可跳过中间状态，StatusLog 完整记录 |
-| SSE 单实例限制 | Medium | MVP 单实例部署；后续加 Redis pub/sub 跨实例广播（非目标中已声明） |
+| SSE 单实例限制 | ~~Medium~~ → Resolved | 已实现 `RedisChannel`（替换旧的 `EventEmitterChannel`）：设 `REDIS_URL` 自动切换 pub/sub；消息携带 instanceId 防重复；连接失败降级到 in-memory |
 | PostgreSQL 全文搜索性能 | Low (MVP) | MVP 阶段数据量小，后续可迁移到 pg_trgm 或 Meilisearch |
 | 需求编号并发冲突 | ~~Medium~~ | 已解决：Prisma `update { increment: 1 }` 原子操作；新增 `GlobalCounter` 表支撑 globalNumber |
 | 附件上传安全风险 | Medium | mimeType 白名单 + 文件大小限制 + 文件名消毒 + 权限校验 |
@@ -868,6 +868,10 @@ Task 13 ─┐
          │              └→ Task 20 (需求池 + 归集到项目 + 批量归集)
          │                     └→ Task 21 (comment/vote/attachment/label/notification 服务适配)
          │                            └→ Task 17 (E2E 需要补充未归集流程)
+
+# Phase 3.6：扩展（Redis + 审计日志）
+Task 12 ─→ Task 22 (Redis pub/sub 跨实例 SSE + 接口抽象：INotificationChannel, EventEmitterChannel, RedisChannel)
+Task 11 ─→ Task 23 (字段级编辑审计：AuditLog 模型 + writeAuditDiff hook + getById include)
 ```
 
 > 注意：Task 9/10/11 在多人并行时共享详情页 UI 文件。实际开发由单人串行完成，避免了冲突；插件插槽方案（detail-slots.tsx）未采用。

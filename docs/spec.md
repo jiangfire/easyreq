@@ -31,8 +31,8 @@
 
 - 不是 SaaS 多租户系统（企业内部单租户部署）
 - 不支持公开注册（用户由 Admin 创建或邀请）
-- MVP 阶段不做跨实例 SSE 广播（单实例部署，后续可加 Redis pub/sub）
-- MVP 阶段不做字段级编辑审计（仅状态变更有 StatusLog）
+- MVP 阶段不做 Redis pub/sub 跨实例 SSE（但已实现 `RedisChannel`，设 `REDIS_URL` 即可启用）
+- MVP 阶段不做字段级编辑审计（但已实现 `AuditLog` 模型，默认可查）
 
 ## Tech Stack
 
@@ -420,6 +420,24 @@ model RequirementLabel {
   @@index([labelId])
 }
 
+// ========== 审计日志（字段级编辑记录） ==========
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  operatorId     String
+  operator       User     @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  action         String   // "field_edit"
+  fieldName      String?  // "title" | "body" | "priority" | "assigneeId" | "expectedDate" | "acceptanceCriteria"
+  oldValue       String?
+  newValue       String?
+  note           String?
+  createdAt      DateTime @default(now())
+  @@index([requirementId])
+  @@index([action])
+}
+
 // ========== 附件 ==========
 
 model Attachment {
@@ -642,6 +660,11 @@ PATCH  /api/admin/users/:id/role              → 修改用户角色（ADMIN）
 ```
 认证方式：基于 NextAuth session cookie（EventSource 自动携带同源 cookie）
 事件过滤：服务端只推送与当前用户相关的事件（作者/指派人/评论者/投票者/项目成员）
+
+频道实现：
+  - 默认：in-memory `EventEmitterChannel`（单实例适用）
+  - 启用 `REDIS_URL` 后：`RedisChannel` 通过 pub/sub 跨实例广播
+  - 每个消息携带发布者 `instanceId`，接收时跳过自己发布的（防重复）
 
 事件类型（event: 字段）：
   event: notification    data: { "id": "...", "type": "STATUS_CHANGE", "title": "...", "link": "..." }
@@ -904,6 +927,16 @@ S3_FORCE_PATH_STYLE=false           # MinIO 等需要 true
 
 # AI 插件
 AI_ENABLED=false
+# AI_PROVIDER=heuristic   # 默认，零依赖，离线关键词匹配
+# AI_PROVIDER=openai       # OpenAI 兼容 HTTP（需要 AI_API_KEY）
+# AI_API_KEY=sk-...
+# AI_BASE_URL=https://api.openai.com/v1
+# AI_MODEL=gpt-4o-mini
+
+# Redis（可选，跨实例 SSE 广播）
+# 不设置 → 单实例 in-memory EventEmitterChannel
+# 设置 → 多实例 RedisChannel，连接失败降级到 in-memory
+# REDIS_URL="redis://localhost:6379"
 ```
 
 ## 已决议事项
@@ -926,7 +959,7 @@ AI_ENABLED=false
 14. **ADMIN 角色**：超级用户，可执行所有操作（包括访问任何项目）
 15. **权限模型**：全局 Role 决定操作类型 + ProjectRole 决定项目访问权限
 16. **评论删除**：软删除（isDeleted），保留审计追溯
-17. **SSE 部署**：MVP 单实例（in-memory `EventEmitter`），后续可扩展 Redis pub/sub 跨实例广播
+17. **SSE 部署**：默认单实例（in-memory `EventEmitter`）；设 `REDIS_URL` 后自动启用 `RedisChannel`（pub/sub，携带 instanceId 防重复），适用于多实例部署
 18. **需求编号（双编号）**：
     - 全局编号 `globalNumber`：所有需求都有，通过 `GlobalCounter` 表原子 increment；迁移时预填为已有需求的 `ROW_NUMBER()`，新建需求从 MAX+1 开始
     - 项目编号 `number`：归集后才有，通过 `Project.lastRequirementNumber` 原子 increment；未归集时为 NULL
