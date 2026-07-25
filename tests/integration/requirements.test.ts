@@ -26,6 +26,7 @@ let projectId: string
 async function cleanDatabase() {
   await db.$transaction([
     db.notification.deleteMany(),
+    db.auditLog.deleteMany(),
     db.statusLog.deleteMany(),
     db.attachment.deleteMany(),
     db.vote.deleteMany(),
@@ -571,5 +572,66 @@ describe('Requirement Service Integration', () => {
       })
       expect(notifications.length).toBe(1)
     })
+  })
+
+  it('logs field edits to AuditLog', async () => {
+    const req = await requirementService.create(projectId, submitterId, { title: 'Audit me' })
+    expect(req.priority).toBe('MEDIUM')
+
+    await db.auditLog.deleteMany({ where: { requirementId: req.id } })
+
+    // Update priority
+    await requirementService.update(req.id, managerId, 'MANAGER', {
+      priority: 'HIGH',
+    })
+
+    const logs = await db.auditLog.findMany({
+      where: { requirementId: req.id },
+      orderBy: { createdAt: 'asc' },
+    })
+    expect(logs.length).toBeGreaterThanOrEqual(1)
+    const priorityLog = logs.find((l) => l.fieldName === 'priority')
+    expect(priorityLog).toBeDefined()
+    expect(priorityLog!.oldValue).toBe('MEDIUM')
+    expect(priorityLog!.newValue).toBe('HIGH')
+    expect(priorityLog!.action).toBe('field_edit')
+  })
+
+  it('Logs title change and body change separately', async () => {
+    const req = await requirementService.create(projectId, submitterId, {
+      title: 'Old title',
+      body: 'Old body',
+    })
+    await db.auditLog.deleteMany({ where: { requirementId: req.id } })
+
+    await requirementService.update(req.id, submitterId, 'SUBMITTER', {
+      title: 'New title',
+      body: 'New body',
+    })
+
+    const logs = await db.auditLog.findMany({
+      where: { requirementId: req.id },
+      orderBy: { fieldName: 'asc' },
+    })
+    const titles = logs.filter((l) => l.fieldName === 'title')
+    expect(titles.length).toBe(1)
+    expect(titles[0].oldValue).toBe('Old title')
+    expect(titles[0].newValue).toBe('New title')
+
+    const bodies = logs.filter((l) => l.fieldName === 'body')
+    expect(bodies.length).toBe(1)
+    expect(bodies[0].oldValue).toBe('Old body')
+    expect(bodies[0].newValue).toBe('New body')
+  })
+
+  it('does not log when no values change', async () => {
+    const req = await requirementService.create(projectId, submitterId, { title: 'Stable' })
+    await db.auditLog.deleteMany({ where: { requirementId: req.id } })
+
+    // Call update with same title
+    await requirementService.update(req.id, submitterId, 'SUBMITTER', { title: 'Stable' })
+
+    const logs = await db.auditLog.findMany({ where: { requirementId: req.id } })
+    expect(logs).toHaveLength(0)
   })
 })

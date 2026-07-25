@@ -139,6 +139,40 @@ export class RequirementService {
   }
 
   /**
+   * Write audit log entries for each changed field between old and new data.
+   * Skips fields whose values haven't changed and labels (tracked differently).
+   */
+  private async writeAuditDiff(
+    requirementId: string,
+    operatorId: string,
+    before: Record<string, string | null>,
+    requested: Record<string, unknown>,
+    applied: Record<string, unknown>,
+  ) {
+    const logs: Array<{ fieldName: string; oldValue: string | null; newValue: string | null }> = []
+    for (const [key, newVal] of Object.entries(applied)) {
+      if (key === 'labels') continue
+      const oldVal = before[key] ?? null
+      const serialized = typeof newVal === 'string' || newVal === null ? newVal : String(newVal)
+      if (oldVal !== serialized) {
+        logs.push({ fieldName: key, oldValue: oldVal, newValue: serialized })
+      }
+    }
+    if (logs.length === 0) return
+
+    await db.auditLog.createMany({
+      data: logs.map((l) => ({
+        requirementId,
+        operatorId,
+        action: 'field_edit',
+        fieldName: l.fieldName,
+        oldValue: l.oldValue,
+        newValue: l.newValue,
+      })),
+    })
+  }
+
+  /**
    * Get the next requirement number for a project.
    * Uses an atomic increment for concurrency safety.
    */
@@ -260,6 +294,13 @@ export class RequirementService {
           },
         },
         statusLogs: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: {
+            operator: { select: { id: true, name: true } },
+          },
+        },
+        auditLogs: {
           orderBy: { createdAt: 'desc' },
           take: 50,
           include: {
@@ -495,6 +536,8 @@ export class RequirementService {
         data: updateData,
       })
 
+      await this.writeAuditDiff(id, userId, initialValues(requirement), data, updateData)
+
       await this.broadcastUpdated(id, null, requirement.authorId, 'fields')
       return updated
     }
@@ -580,6 +623,8 @@ export class RequirementService {
         },
       },
     })
+
+    await this.writeAuditDiff(id, userId, initialValues(requirement), data, updateData)
 
     if (data.assigneeId && data.assigneeId !== requirement.assigneeId) {
       await notificationService.createMany([
@@ -823,6 +868,30 @@ export class RequirementService {
     }
 
     await notificationService.createMany(targets)
+  }
+}
+
+/**
+ * Snapshot the current values of the requirement that the audit logger
+ * compares against. This runs *before* the update so we have the old values.
+ */
+function initialValues(
+  r: {
+    title: string
+    body: string | null
+    priority: string
+    assigneeId: string | null
+    expectedDate: Date | null
+    acceptanceCriteria: string | null
+  },
+): Record<string, string | null> {
+  return {
+    title: r.title,
+    body: r.body,
+    priority: r.priority,
+    assigneeId: r.assigneeId,
+    expectedDate: r.expectedDate?.toISOString() ?? null,
+    acceptanceCriteria: r.acceptanceCriteria,
   }
 }
 

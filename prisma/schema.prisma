@@ -24,6 +24,7 @@ model User {
   notifications Notification[]
   attachments   Attachment[]
   statusLogs    StatusLog[]
+  auditLogs     AuditLog[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 }
@@ -94,6 +95,7 @@ model Requirement {
   comments           Comment[]
   votes              Vote[]
   statusLogs         StatusLog[]
+  auditLogs         AuditLog[]
   labels             RequirementLabel[]
   attachments        Attachment[]
   createdAt          DateTime           @default(now())
@@ -238,4 +240,23 @@ model Attachment {
 enum StorageProvider {
   LOCAL
   S3
+}
+
+// ========== 审计日志 ==========
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  requirementId  String
+  requirement    Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  operatorId     String
+  operator       User     @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  action         String   // "field_edit" | "comment_deleted" | ...
+  fieldName      String?  // "title" | "body" | "priority" | "assigneeId" | "expectedDate" | "acceptanceCriteria"
+  oldValue       String?
+  newValue       String?
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([requirementId])
+  @@index([action])
 }
