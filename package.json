@@ -2,6 +2,15 @@
   "name": "easyreq",
   "version": "0.1.0",
   "private": true,
+  "allowScripts": {
+    "@prisma/engines": true,
+    "@sentry/cli": true,
+    "esbuild": true,
+    "prisma": true,
+    "sharp": true,
+    "unrs-resolver": true
+  },
+  "fund": false,
   "overrides": {
     "fast-uri": "3.1.4",
     "js-yaml": "4.3.0",
