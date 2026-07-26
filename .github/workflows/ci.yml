@@ -26,6 +26,7 @@ jobs:
           node-version: "24"
           cache: "npm"
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org
       - run: npm run lint
 
   typecheck:
@@ -172,10 +173,30 @@ jobs:
       - name: Run S3 integration tests
         run: npm run test:s3
 
-  build:
-    name: Build
+  e2e:
+    name: End-to-End (Playwright)
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, test-s3]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: easyreq
+          POSTGRES_PASSWORD: easyreq
+          POSTGRES_DB: easyreqdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
+      DATABASE_TEST_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb_test
+      NEXTAUTH_SECRET: ci-secret-do-not-use-in-prod
+      NEXTAUTH_URL: http://localhost:3000
+      STORAGE_PROVIDER: local
+      STORAGE_LOCAL_DIR: ./uploads
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -184,4 +205,93 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx prisma generate
-      - run: npm run build
+      - name: Create the test database
+        run: |
+          node -e "const{Client}=require('pg');(async()=>{const c=new Client({connectionString:process.env.DATABASE_URL});await c.connect();await c.query('CREATE DATABASE easyreqdb_test');await c.end();})().catch(e=>{if(e.code==='42P04')process.exit(0);console.error(e);process.exit(1)})"
+      - name: Run migrations and seed
+        run: |
+          npx prisma migrate deploy
+          DATABASE_URL=$DATABASE_TEST_URL npx prisma migrate deploy
+          npm run db:seed
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test, test-s3, e2e]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+      - run: npm ci
+      - name: Build image
+        run: docker build --tag easyreq:ci --load .
+      - name: Smoke test container
+        env:
+          DATABASE_URL: postgresql://easyreq:easyreq@localhost:5432/easyreqdb
+          NEXTAUTH_SECRET: ci-secret-do-not-use-in-prod
+          NEXTAUTH_URL: http://localhost:3000
+          PORT: "3000"
+        run: |
+          echo "Starting container with bogus DB URL (we only need boot)."
+          docker run --rm --detach --name easyreq-smoke \
+            -p 3000:3000 \
+            -e DATABASE_URL \
+            -e NEXTAUTH_SECRET \
+            -e NEXTAUTH_URL \
+            -e PORT \
+            easyreq:ci
+          # Give Next.js a moment to boot, then hit the root path. We don't
+          # care if it returns 500 (DB unreachable); we only want to know that
+          # the container started and is serving HTTP requests.
+          for i in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || echo 000)
+            if [ "$status" != "000" ]; then
+              echo "Container responding with HTTP $status"
+              docker stop easyreq-smoke >/dev/null
+              exit 0
+            fi
+            echo "Waiting for HTTP ($i)..."
+            sleep 2
+          done
+          echo "Container never started serving" >&2
+          docker logs easyreq-smoke >&2 || true
+          docker stop easyreq-smoke >/dev/null || true
+          exit 1
+
+  publish:
+    name: Publish Image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [docker]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
